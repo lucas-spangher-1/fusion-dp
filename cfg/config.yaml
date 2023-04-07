@@ -1,7 +1,7 @@
 # @package _global_
 
 # global parameters
-device: cuda
+device: cpu
 debug: True
 deterministic: False
 no_workers: -1

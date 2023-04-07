@@ -4,6 +4,7 @@ import pytorch_lightning as pl
 import glob
 import hydra
 import torchmetrics
+from torchmetrics.classification import MulticlassAccuracy
 
 # project
 from optim import construct_optimizer, construct_scheduler
@@ -128,12 +129,15 @@ class ClassificationWrapper(LightningWrapperBase):
             network=network,
             cfg=cfg,
         )
-        # Other metrics
-        self.train_acc = torchmetrics.Accuracy()
-        self.val_acc = torchmetrics.Accuracy()
-        self.test_acc = torchmetrics.Accuracy()
+
         # Binary problem?
-        self.multiclass = network.out_layer.out_channels != 1
+        n_classes = network.out_layer.out_channels
+        self.multiclass = n_classes != 1
+
+        # Other metrics
+        self.train_acc = MulticlassAccuracy(num_classes=n_classes)
+        self.val_acc = MulticlassAccuracy(num_classes=n_classes)
+        self.test_acc = MulticlassAccuracy(num_classes=n_classes)
         # Loss metric
         if self.multiclass:
             self.loss_metric = torch.nn.CrossEntropyLoss()
