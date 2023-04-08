@@ -19,9 +19,10 @@ from pytorch_lightning.loggers import WandbLogger
 # Configs
 import hydra
 from omegaconf import OmegaConf
+import os
 
 
-@hydra.main(config_path="cfg", config_name="config.yaml")
+@hydra.main(config_path="cfg", config_name="config.yaml", version_base="1.3")
 def main(
     cfg: OmegaConf,
 ):
@@ -61,12 +62,14 @@ def main(
     else:
         log_model = "all"
         offline = False
+    print(f"Wandb id is {cfg.wandb.model_run_id}")
     wandb_logger = WandbLogger(
         project=cfg.wandb.project,
         entity=cfg.wandb.entity,
         config=ckconv.utils.flatten_configdict(cfg),
         log_model=log_model,  # used to save models to wandb during training
         offline=offline,
+        id=cfg.wandb.model_run_id if cfg.wandb.model_run_id != -1 else None,
         save_code=True,
     )
 
@@ -120,8 +123,10 @@ def main(
             # From preloaded point
             trainer.fit(model=model, datamodule=datamodule, ckpt_path=checkpoint_path)
         else:
-            # From scratch
-            trainer.fit(model=model, datamodule=datamodule)
+            # From scratch/checkpoint
+            print("CWD IS NOW: " + os.getcwd())
+            ckpt_path = None if cfg.train.resume_from_ckpt == -1 else cfg.train.resume_from_ckpt
+            trainer.fit(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
         # Load state dict from best performing model
         model.load_state_dict(
             torch.load(checkpoint_callback.best_model_path)["state_dict"],

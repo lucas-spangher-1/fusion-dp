@@ -1,4 +1,6 @@
 import pytorch_lightning as pl
+from models.lightning_wrappers import OnExceptionExit
+import os
 
 # typing
 import torch.cuda
@@ -55,6 +57,8 @@ def construct_trainer(
         verbose=True,
     )
 
+    exception_callback = OnExceptionExit()
+
     """
     TODO:
     detect_anomaly
@@ -67,33 +71,42 @@ def construct_trainer(
     """
     # Distributed training params
     if cfg.device == "cuda":
+        accelerator = "auto"
         sync_batchnorm = cfg.train.distributed
         strategy = "ddp_find_unused_parameters_false" if cfg.train.distributed else None
         devices = cfg.train.avail_gpus if cfg.train.distributed else 1
         num_nodes = cfg.train.num_nodes if (cfg.train.num_nodes != -1) else 1
     else:
         print("_____ USING CPU _______")
+        accelerator = "cpu"
         devices = "auto"
         sync_batchnorm = False
         strategy = "auto"
-        num_nodes = 1
+        num_nodes = 0
 
     if cfg.train.track_grad_norm != -1:
         # TODO: figure this out
         None
 
+    print("CWD is :" + os.getcwd())
+
     # create trainer
     trainer = pl.Trainer(
+        default_root_dir=os.getcwd(),
+        accelerator=accelerator,
         max_epochs=cfg.train.epochs,
         logger=wandb_logger,
         gradient_clip_val=cfg.train.grad_clip,
         accumulate_grad_batches=cfg.train.accumulate_grad_steps,
+        limit_train_batches=cfg.train.limit_train_batches,
+        limit_val_batches=cfg.train.limit_val_batches,
         # Callbacks
         callbacks=[
             modelsummary_callback,
             lrmonitor_callback,
             checkpoint_callback,
             early_stopping_callback,
+            exception_callback,
         ],
         # Multi-GPU
         num_nodes=num_nodes,

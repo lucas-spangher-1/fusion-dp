@@ -6,5 +6,5 @@ def linspace_grid(grid_sizes):
     tensors = []
     for size in grid_sizes:
         tensors.append(torch.linspace(-1, 1, steps=size))
-    grid = torch.stack(torch.meshgrid(*tensors), dim=0)
+    grid = torch.stack(torch.meshgrid(*tensors, indexing='ij'), dim=0)
     return grid

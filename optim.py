@@ -28,7 +28,7 @@ def construct_optimizer(
     mask_lr = optim_cfg.lr * optim_cfg.mask_lr_ratio
 
     # Divide params in mask parameters & other parameters
-    all_parameters = set(model.parameters())
+    all_parameters = model.parameters()
     # mask_params
     mask_params = []
     for m in model.modules():
@@ -41,11 +41,8 @@ def construct_optimizer(
                     ),
                 )
             )
-    mask_params = set(mask_params)
-    other_params = all_parameters - mask_params
+    other_params = [v for v in all_parameters if v not in mask_params]
     # as list
-    mask_params = list(mask_params)
-    other_params = list(other_params)
     parameters = [
         {"params": other_params},
         {"params": mask_params, "lr": mask_lr},

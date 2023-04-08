@@ -5,6 +5,8 @@ import glob
 import hydra
 import torchmetrics
 from torchmetrics.classification import MulticlassAccuracy
+from pytorch_lightning.callbacks import Callback
+import sys
 
 # project
 from optim import construct_optimizer, construct_scheduler
@@ -41,6 +43,7 @@ class LightningWrapperBase(pl.LightningModule):
         self.no_params = -1
         # Explicitly define whether we are in distributed mode.
         self.distributed = cfg.train.distributed and cfg.train.avail_gpus != 1
+        self.save_hyperparameters()
 
     def forward(self, x):
         return self.network(x)
@@ -151,6 +154,8 @@ class ClassificationWrapper(LightningWrapperBase):
         # Placeholders for logging of best train & validation values
         self.best_train_acc = 0.0
         self.best_val_acc = 0.0
+        self.train_step_outputs = []
+        self.validation_step_outputs = []
 
     def _step(self, batch, accuracy_calculator):
         x, labels = batch
@@ -193,6 +198,9 @@ class ClassificationWrapper(LightningWrapperBase):
             prog_bar=True,
             sync_dist=self.distributed,
         )
+        # Store loss and logits for on_train_epoch_end
+        self.train_step_outputs.append({"loss": loss + reg_loss, "logits": logits.detach()})
+        # Do I still need the logits in this?
         return {"loss": loss + reg_loss, "logits": logits.detach()}
 
     def validation_step(self, batch, batch_idx):
@@ -215,6 +223,7 @@ class ClassificationWrapper(LightningWrapperBase):
             prog_bar=True,
             sync_dist=self.distributed,
         )
+        self.validation_step_outputs.append({"logits": logits})
         return logits  # used to log histograms in validation_epoch_step
 
     def test_step(self, batch, batch_idx):
@@ -238,9 +247,9 @@ class ClassificationWrapper(LightningWrapperBase):
             sync_dist=self.distributed,
         )
 
-    def training_epoch_end(self, train_step_outputs):
+    def on_train_epoch_end(self):
         flattened_logits = torch.flatten(
-            torch.cat([step_output["logits"] for step_output in train_step_outputs])
+            torch.cat([step_output["logits"] for step_output in self.train_step_outputs])
         )
         self.logger.experiment.log(
             {
@@ -258,10 +267,11 @@ class ClassificationWrapper(LightningWrapperBase):
                     "global_step": self.global_step,
                 }
             )
+        self.train_step_outputs.clear()
 
-    def validation_epoch_end(self, validation_step_outputs):
+    def on_validation_epoch_end(self):
         # Gather logits from validation set and construct a histogram of them.
-        flattened_logits = torch.flatten(torch.cat(validation_step_outputs))
+        flattened_logits = torch.flatten(torch.cat([output["logits"] for output in self.validation_step_outputs]))
         self.logger.experiment.log(
             {
                 "val/logits": wandb.Histogram(flattened_logits.to("cpu")),
@@ -279,6 +289,7 @@ class ClassificationWrapper(LightningWrapperBase):
                     "global_step": self.global_step,
                 }
             )
+        self.validation_step_outputs.clear()
 
     @staticmethod
     def multiclass_prediction(logits):
@@ -404,3 +415,9 @@ class PyGRegressionWrapper(RegressionWrapper):
         loss = self.loss_metric(prediction, batch.y)
         # Return predictions and loss
         return prediction, loss
+
+class OnExceptionExit(Callback):
+    def on_exception(self, trainer, module, exception):
+        print(f"exception caught, gracefully shutting down: {exception}")
+        sys.exit("Graceful shutdown")
+
