@@ -73,7 +73,7 @@ def construct_trainer(
     if cfg.device == "cuda":
         accelerator = "auto"
         sync_batchnorm = cfg.train.distributed
-        strategy = "ddp_find_unused_parameters_false" if cfg.train.distributed else None
+        strategy = "ddp_find_unused_parameters_false" if cfg.train.distributed else "auto"
         devices = cfg.train.avail_gpus if cfg.train.distributed else 1
         num_nodes = cfg.train.num_nodes if (cfg.train.num_nodes != -1) else 1
     else:

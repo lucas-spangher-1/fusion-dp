@@ -109,6 +109,7 @@ class LightningWrapperBase(pl.LightningModule):
                     )
                     # Filter paths
                     paths = list(filter(lambda x: "outputs" not in x, paths))
+                    paths = list(filter(lambda x: "venv" not in x, paths))
                     paths = list(filter(lambda x: "wandb" not in x, paths))
                     # Get all source files
                     for path in paths:

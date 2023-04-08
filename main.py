@@ -20,6 +20,7 @@ from pytorch_lightning.loggers import WandbLogger
 import hydra
 from omegaconf import OmegaConf
 import os
+from pathlib import Path
 
 
 @hydra.main(config_path="cfg", config_name="config.yaml", version_base="1.3")
@@ -56,22 +57,16 @@ def main(
     model = construct_model(cfg, datamodule)
 
     # Initialize wandb logger
-    if cfg.debug:
-        log_model = False
-        offline = True
-    else:
-        log_model = "all"
-        offline = False
-    print(f"Wandb id is {cfg.wandb.model_run_id}")
     wandb_logger = WandbLogger(
         project=cfg.wandb.project,
-        entity=cfg.wandb.entity,
+        entity=cfg.wandb.entity if cfg.wandb.entity != -1 else None,
         config=ckconv.utils.flatten_configdict(cfg),
-        log_model=log_model,  # used to save models to wandb during training
-        offline=offline,
-        id=cfg.wandb.model_run_id if cfg.wandb.model_run_id != -1 else None,
-        save_code=True,
+        log_model=None if cfg.offline else "all",  # used to save models to wandb during training
+        offline=cfg.offline,
+        id=cfg.wandb.run_id if cfg.wandb.run_id != -1 else None,
+        save_code=False,
     )
+    print(f"Wandb id is {wandb.run.id}")
 
     # Before start training. Verify arguments in the cfg.
     verify_config(cfg)
@@ -82,7 +77,7 @@ def main(
         command = " ".join(args)
 
         # Log the command.
-        wandb_logger.experiment.config.update({"command": command})
+        wandb_logger.experiment.config.update({"command": command}, allow_val_change=True)
 
     # Print the cfg files prior to training
     print(f"Input arguments \n {OmegaConf.to_yaml(cfg)}")
@@ -123,10 +118,24 @@ def main(
             # From preloaded point
             trainer.fit(model=model, datamodule=datamodule, ckpt_path=checkpoint_path)
         else:
-            # From scratch/checkpoint
-            print("CWD IS NOW: " + os.getcwd())
-            ckpt_path = None if cfg.train.resume_from_ckpt == -1 else cfg.train.resume_from_ckpt
-            trainer.fit(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+            # Load from wand checkpoint
+            resume_ckpt = None
+            if cfg.train.resume_wandb and not cfg.offline:
+                wb = cfg.wandb
+                checkpoint_ref = f"model-{wb.run_id}:{cfg.train.resume_wandb}"
+                try:
+                    artifact_dir = wandb_logger.download_artifact(checkpoint_ref, artifact_type="model") 
+                    resume_ckpt = str(Path(artifact_dir) / "model.ckpt")
+                except Exception as e:
+                    print(e)
+                    print("No checkpoint found in wandb. Training from scratch.")
+
+            elif cfg.train.resume_local:
+                resume_ckpt = cfg.train.resume_local
+
+            trainer.fit(model=model, datamodule=datamodule, ckpt_path=resume_ckpt)
+
+
         # Load state dict from best performing model
         model.load_state_dict(
             torch.load(checkpoint_callback.best_model_path)["state_dict"],
