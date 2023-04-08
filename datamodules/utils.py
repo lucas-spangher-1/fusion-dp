@@ -10,8 +10,6 @@ from functools import partial
 from torch import Tensor
 
 from torch_geometric.transforms import BaseTransform, LinearTransformation, GridSampling
-from torch_cluster import grid_cluster
-
 import matplotlib.pyplot as plt
 
 

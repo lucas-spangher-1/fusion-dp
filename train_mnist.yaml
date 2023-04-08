@@ -1,0 +1,21 @@
+resources:
+  accelerators: K80:1
+
+  use_spot: True
+  disk_size: 50
+
+# Working directory (optional) containing the project codebase.
+# Its contents are synced to ~/sky_workdir/ on the cluster.
+workdir: .
+
+# Typical use: pip install -r requirements.txt
+# Invoked under the workdir (i.e., can use its files).
+setup: |
+  echo "Running setup."
+  sudo apt-get install build-essential
+  pip install -r requirements.txt
+
+# Typical use: make use of resources, such as running training.
+# Invoked under the workdir (i.e., can use its files).
+run: |
+  python main.py conv.bias=True conv.causal=True conv.type=SeparableFlexConv conv.use_fft=True dataset.data_type=sequence dataset.name=MNIST dataset.params.permuted=False kernel.bias=True kernel.chang_initialize=True kernel.no_hidden=32 kernel.no_layers=3 kernel.omega_0=2976.4910261630357 kernel.type=MAGNet mask.dynamic_cropping=True mask.init_value=0.075 mask.threshold=0.1 mask.type=gaussian net.block.type=S4 net.dropout=0.1 net.dropout_in=0 net.dropout_type=Dropout2d net.no_blocks=4 net.no_hidden=140 net.nonlinearity=GELU net.norm=BatchNorm net.type=ResNet optimizer.lr=0.01 optimizer.mask_lr_ratio=1 optimizer.name=AdamW optimizer.weight_decay=1e-06 scheduler.name=cosine scheduler.warmup_epochs=10 test.batch_size_multiplier=1 test.before_train=False train.batch_size=100 train.epochs=210 train.max_epochs_no_improvement=200 offline=False wandb.project=ccnn wandb.project=ccnn wandb.entity=aphoh wandb.run_id=sqpxxxxd
