@@ -5,6 +5,7 @@ data/*
 !data/.gitkeep
 outputs/*
 artifacts/*
+ccnn/
 
 # Jupyter Notebook
 .ipynb_checkpoints
