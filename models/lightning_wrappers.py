@@ -4,7 +4,7 @@ import pytorch_lightning as pl
 import glob
 import hydra
 import torchmetrics
-from torchmetrics.classification import Accuracy
+from torchmetrics.classification import Accuracy, Recall, F1Score
 from pytorch_lightning.callbacks import Callback
 import sys
 
@@ -141,8 +141,17 @@ class ClassificationWrapper(LightningWrapperBase):
         # Other metrics
         task = "multiclass" if self.multiclass else "binary"
         self.train_acc = Accuracy(num_classes=n_classes, task=task)
+        self.train_recall = Recall(task=task)
+        self.train_f1 = F1Score(task=task)
+
         self.val_acc = Accuracy(num_classes=n_classes, task=task)
+        self.val_recall = Recall(task=task)
+        self.val_f1 = F1Score(task=task)
+
         self.test_acc = Accuracy(num_classes=n_classes, task=task)
+        self.test_recall = Recall(task=task)
+        self.test_f1 = F1Score(task=task)
+
         # Loss metric
         if self.multiclass:
             self.loss_metric = torch.nn.CrossEntropyLoss()
@@ -159,13 +168,15 @@ class ClassificationWrapper(LightningWrapperBase):
         self.train_step_outputs = []
         self.validation_step_outputs = []
 
-    def _step(self, batch, accuracy_calculator):
+    def _step(self, batch, accuracy_calculator, recall_calculator, f1_calculator):
         x, labels = batch
         logits = self(x)
         # Predictions
         predictions = self.get_predictions(logits)
         # Calculate accuracy and loss
         accuracy_calculator(predictions, labels)
+        recall_calculator(predictions, labels)
+        f1_calculator(predictions, labels)
         # For binary classification, the labels must be float
         if not self.multiclass:
             labels = labels.float()  # N
@@ -176,7 +187,9 @@ class ClassificationWrapper(LightningWrapperBase):
 
     def training_step(self, batch, batch_idx):
         # Perform step
-        predictions, logits, loss = self._step(batch, self.train_acc)
+        predictions, logits, loss = self._step(
+            batch, self.train_acc, self.train_recall, self.train_f1
+        )
         # Add regularization
         if self.weight_regularizer is not None:
             reg_loss = self.weight_regularizer(self.network)
@@ -189,6 +202,20 @@ class ClassificationWrapper(LightningWrapperBase):
         self.log(
             "train/acc",
             self.train_acc,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=self.distributed,
+        )
+        self.log(
+            "train/recall",
+            self.train_recall,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=self.distributed,
+        )
+        self.log(
+            "train/f1",
+            self.train_f1,
             on_epoch=True,
             prog_bar=True,
             sync_dist=self.distributed,
@@ -209,12 +236,28 @@ class ClassificationWrapper(LightningWrapperBase):
 
     def validation_step(self, batch, batch_idx):
         # Perform step
-        predictions, logits, loss = self._step(batch, self.val_acc)
+        predictions, logits, loss = self._step(
+            batch, self.val_acc, self.val_recall, self.val_f1
+        )
         # Log and return loss (Required in training step)
         self.log(
             "val/loss",
             loss,
             on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=self.distributed,
+        )
+        self.log(
+            "val/recall",
+            self.val_recall,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=self.distributed,
+        )
+        self.log(
+            "val/f1",
+            self.val_f1,
             on_epoch=True,
             prog_bar=True,
             sync_dist=self.distributed,
@@ -232,12 +275,28 @@ class ClassificationWrapper(LightningWrapperBase):
 
     def test_step(self, batch, batch_idx):
         # Perform step
-        predictions, _, loss = self._step(batch, self.test_acc)
+        predictions, _, loss = self._step(
+            batch, self.test_acc, self.test_recall, self.test_f1
+        )
         # Log and return loss (Required in training step)
         self.log(
             "test/loss",
             loss,
             on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=self.distributed,
+        )
+        self.log(
+            "test/recall",
+            self.test_recall,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=self.distributed,
+        )
+        self.log(
+            "test/f1",
+            self.test_f1,
             on_epoch=True,
             prog_bar=True,
             sync_dist=self.distributed,
@@ -404,12 +463,15 @@ class RegressionWrapper(LightningWrapperBase):
 #    Point Cloud Models     #
 #############################
 class PyGClassificationWrapper(ClassificationWrapper):
-    def _step(self, batch, accuracy_calculator):
+    def _step(self, batch, accuracy_calculator, recall_calculator, f1_calculator):
         logits = self(batch)
         # Predictions
         predictions = torch.argmax(logits, 1)
         # Calculate accuracy and loss
         accuracy_calculator(predictions, batch.y)
+        recall_calculator(predictions, batch.y)
+        f1_calculator(predictions, batch.y)
+
         loss = self.loss_metric(logits, batch.y)
         # Return predictions and loss
         return predictions, logits, loss
