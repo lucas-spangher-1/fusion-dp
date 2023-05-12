@@ -101,6 +101,8 @@ class LucasDataModule(pl.LightningDataModule):
         if os.path.exists(os.path.join(self.data_dir, self.DATA_FILENAME)):
             return
 
+        os.makedirs(self.data_dir, exist_ok=True)
+
         resp = requests.get(URL, stream=True)
         progress = tqdm(
             desc="Downloading lucas_data_f32.pickle",
