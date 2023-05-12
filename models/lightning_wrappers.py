@@ -4,7 +4,7 @@ import pytorch_lightning as pl
 import glob
 import hydra
 import torchmetrics
-from torchmetrics.classification import MulticlassAccuracy
+from torchmetrics.classification import Accuracy
 from pytorch_lightning.callbacks import Callback
 import sys
 
@@ -139,9 +139,10 @@ class ClassificationWrapper(LightningWrapperBase):
         self.multiclass = n_classes != 1
 
         # Other metrics
-        self.train_acc = MulticlassAccuracy(num_classes=n_classes)
-        self.val_acc = MulticlassAccuracy(num_classes=n_classes)
-        self.test_acc = MulticlassAccuracy(num_classes=n_classes)
+        task = "multiclass" if self.multiclass else "binary"
+        self.train_acc = Accuracy(num_classes=n_classes, task=task)
+        self.val_acc = Accuracy(num_classes=n_classes, task=task)
+        self.test_acc = Accuracy(num_classes=n_classes, task=task)
         # Loss metric
         if self.multiclass:
             self.loss_metric = torch.nn.CrossEntropyLoss()
@@ -200,7 +201,9 @@ class ClassificationWrapper(LightningWrapperBase):
             sync_dist=self.distributed,
         )
         # Store loss and logits for on_train_epoch_end
-        self.train_step_outputs.append({"loss": loss + reg_loss, "logits": logits.detach()})
+        self.train_step_outputs.append(
+            {"loss": loss + reg_loss, "logits": logits.detach()}
+        )
         # Do I still need the logits in this?
         return {"loss": loss + reg_loss, "logits": logits.detach()}
 
@@ -250,7 +253,9 @@ class ClassificationWrapper(LightningWrapperBase):
 
     def on_train_epoch_end(self):
         flattened_logits = torch.flatten(
-            torch.cat([step_output["logits"] for step_output in self.train_step_outputs])
+            torch.cat(
+                [step_output["logits"] for step_output in self.train_step_outputs]
+            )
         )
         self.logger.experiment.log(
             {
@@ -272,7 +277,9 @@ class ClassificationWrapper(LightningWrapperBase):
 
     def on_validation_epoch_end(self):
         # Gather logits from validation set and construct a histogram of them.
-        flattened_logits = torch.flatten(torch.cat([output["logits"] for output in self.validation_step_outputs]))
+        flattened_logits = torch.flatten(
+            torch.cat([output["logits"] for output in self.validation_step_outputs])
+        )
         self.logger.experiment.log(
             {
                 "val/logits": wandb.Histogram(flattened_logits.to("cpu")),
@@ -417,8 +424,8 @@ class PyGRegressionWrapper(RegressionWrapper):
         # Return predictions and loss
         return prediction, loss
 
+
 class OnExceptionExit(Callback):
     def on_exception(self, trainer, module, exception):
         print(f"exception caught, gracefully shutting down: {exception}")
         sys.exit("Graceful shutdown")
-

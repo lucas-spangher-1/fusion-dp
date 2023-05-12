@@ -55,6 +55,7 @@ def construct_trainer(
         mode=cfg.scheduler.mode,
         patience=cfg.train.max_epochs_no_improvement,
         verbose=True,
+        strict=True,
     )
 
     exception_callback = OnExceptionExit()

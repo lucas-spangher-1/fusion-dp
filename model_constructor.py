@@ -5,10 +5,7 @@ import pytorch_lightning as pl
 # project
 import ckconv
 import models
-from models.lightning_wrappers import (
-    ClassificationWrapper,
-    PyGClassificationWrapper
-)
+from models.lightning_wrappers import ClassificationWrapper, PyGClassificationWrapper
 
 # typing
 from omegaconf import OmegaConf

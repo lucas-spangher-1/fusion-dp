@@ -7,3 +7,4 @@ from .pathfinder import PathFinderDataModule
 from .imdb import IMDBDataModule
 from .listops import ListOpsDataModule
 from .modelnet import ModelNetDataModule
+from .lucas import LucasDataModule
