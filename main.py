@@ -36,6 +36,7 @@ def main(
 
     # Check number of available gpus
     cfg.train.avail_gpus = torch.cuda.device_count()
+    torch.set_float32_matmul_precision("high")
 
     # Construct data_module
     datamodule = construct_datamodule(cfg)
@@ -149,6 +150,7 @@ def main(
         )
 
     # Validate and test before finishing
+    model.eval()
     trainer.validate(
         model,
         datamodule=datamodule,

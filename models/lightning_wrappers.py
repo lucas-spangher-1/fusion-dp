@@ -43,7 +43,7 @@ class LightningWrapperBase(pl.LightningModule):
         self.no_params = -1
         # Explicitly define whether we are in distributed mode.
         self.distributed = cfg.train.distributed and cfg.train.avail_gpus != 1
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["network"])
 
     def forward(self, x):
         return self.network(x)
@@ -123,6 +123,8 @@ class LightningWrapperBase(pl.LightningModule):
 
 
 class ClassificationWrapper(LightningWrapperBase):
+    METRICS = ["acc", "recall", "f1"]
+
     def __init__(
         self,
         network: torch.nn.Module,
@@ -168,15 +170,15 @@ class ClassificationWrapper(LightningWrapperBase):
         self.train_step_outputs = []
         self.validation_step_outputs = []
 
-    def _step(self, batch, accuracy_calculator, recall_calculator, f1_calculator):
+    def _step(self, batch, metrics):
         x, labels = batch
         logits = self(x)
         # Predictions
         predictions = self.get_predictions(logits)
         # Calculate accuracy and loss
-        accuracy_calculator(predictions, labels)
-        recall_calculator(predictions, labels)
-        f1_calculator(predictions, labels)
+        for metric in metrics:
+            metric(predictions, labels)
+
         # For binary classification, the labels must be float
         if not self.multiclass:
             labels = labels.float()  # N
@@ -185,10 +187,21 @@ class ClassificationWrapper(LightningWrapperBase):
         # Return predictions and loss
         return predictions, logits, loss
 
+    def _log_metrics(self, stage: str, loss, **kwargs):
+        self.log(f"{stage}/loss", loss, **kwargs)
+        for metric in self.METRICS:
+            m = getattr(self, f"{stage}_{metric}", None)
+            if m is not None:
+                self.log(
+                    f"{stage}/{metric}",
+                    m,
+                    **kwargs,
+                )
+
     def training_step(self, batch, batch_idx):
         # Perform step
         predictions, logits, loss = self._step(
-            batch, self.train_acc, self.train_recall, self.train_f1
+            batch, [self.train_acc, self.train_recall, self.train_f1]
         )
         # Add regularization
         if self.weight_regularizer is not None:
@@ -196,34 +209,11 @@ class ClassificationWrapper(LightningWrapperBase):
         else:
             reg_loss = 0.0
         # Log and return loss (Required in training step)
-        self.log(
-            "train/loss", loss, on_epoch=True, prog_bar=True, sync_dist=self.distributed
-        )
-        self.log(
-            "train/acc",
-            self.train_acc,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=self.distributed,
-        )
-        self.log(
-            "train/recall",
-            self.train_recall,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=self.distributed,
-        )
-        self.log(
-            "train/f1",
-            self.train_f1,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=self.distributed,
-        )
-        self.log(
-            "train/reg_loss",
-            reg_loss,
-            on_epoch=True,
+        self._log_metrics(
+            "train",
+            loss,
+            on_step=True,
+            on_epoch=False,
             prog_bar=True,
             sync_dist=self.distributed,
         )
@@ -237,38 +227,11 @@ class ClassificationWrapper(LightningWrapperBase):
     def validation_step(self, batch, batch_idx):
         # Perform step
         predictions, logits, loss = self._step(
-            batch, self.val_acc, self.val_recall, self.val_f1
+            batch, [self.val_acc, self.val_recall, self.val_f1]
         )
         # Log and return loss (Required in training step)
-        self.log(
-            "val/loss",
-            loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=self.distributed,
-        )
-        self.log(
-            "val/recall",
-            self.val_recall,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=self.distributed,
-        )
-        self.log(
-            "val/f1",
-            self.val_f1,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=self.distributed,
-        )
-        self.log(
-            "val/acc",
-            self.val_acc,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=self.distributed,
+        self._log_metrics(
+            "val", loss, on_step=False, on_epoch=True, sync_dist=self.distributed
         )
         self.validation_step_outputs.append({"logits": logits})
         return logits  # used to log histograms in validation_epoch_step
@@ -276,38 +239,10 @@ class ClassificationWrapper(LightningWrapperBase):
     def test_step(self, batch, batch_idx):
         # Perform step
         predictions, _, loss = self._step(
-            batch, self.test_acc, self.test_recall, self.test_f1
+            batch, [self.test_acc, self.test_recall, self.test_f1]
         )
-        # Log and return loss (Required in training step)
-        self.log(
-            "test/loss",
-            loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=self.distributed,
-        )
-        self.log(
-            "test/recall",
-            self.test_recall,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=self.distributed,
-        )
-        self.log(
-            "test/f1",
-            self.test_f1,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=self.distributed,
-        )
-        self.log(
-            "test/acc",
-            self.test_acc,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=self.distributed,
+        self._log_metrics(
+            "test", loss, on_step=False, on_epoch=True, sync_dist=self.distributed
         )
 
     def on_train_epoch_end(self):
