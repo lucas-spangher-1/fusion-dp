@@ -175,13 +175,14 @@ class LucasDataModule(pl.LightningDataModule):
         return dl
 
     def test_dataloader(self) -> EVAL_DATALOADERS:
-        return DataLoader(
-            self.test_dataloader,
+        dl = DataLoader(
+            self.test_dataset,
             self.batch_size,
             pin_memory=self.pin_memory,
             num_workers=self.num_workers,
             collate_fn=collate_fn,
         )
+        return dl
 
     def val_dataloader(self) -> EVAL_DATALOADERS:
         dl = DataLoader(

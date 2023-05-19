@@ -61,7 +61,9 @@ def main(
         project=cfg.wandb.project,
         entity=cfg.wandb.entity if cfg.wandb.entity != -1 else None,
         config=ckconv.utils.flatten_configdict(cfg),
-        log_model=None if cfg.offline else "all",  # used to save models to wandb during training
+        log_model=None
+        if cfg.offline
+        else "all",  # used to save models to wandb during training
         offline=cfg.offline,
         id=cfg.wandb.run_id if cfg.wandb.run_id != -1 else None,
         save_code=False,
@@ -77,7 +79,9 @@ def main(
         command = " ".join(args)
 
         # Log the command.
-        wandb_logger.experiment.config.update({"command": command}, allow_val_change=True)
+        wandb_logger.experiment.config.update(
+            {"command": command}, allow_val_change=True
+        )
 
     # Print the cfg files prior to training
     print(f"Input arguments \n {OmegaConf.to_yaml(cfg)}")
@@ -88,7 +92,9 @@ def main(
     # Load checkpoint
     if cfg.pretrained.load:
         # Construct artifact path.
-        checkpoint_path = hydra.utils.get_original_cwd() + f"/artifacts/{cfg.pretrained.filename}"
+        checkpoint_path = (
+            hydra.utils.get_original_cwd() + f"/artifacts/{cfg.pretrained.filename}"
+        )
 
         # Load model from artifact
         print(
@@ -124,7 +130,9 @@ def main(
                 wb = cfg.wandb
                 checkpoint_ref = f"model-{wb.run_id}:{cfg.train.resume_wandb}"
                 try:
-                    artifact_dir = wandb_logger.download_artifact(checkpoint_ref, artifact_type="model") 
+                    artifact_dir = wandb_logger.download_artifact(
+                        checkpoint_ref, artifact_type="model"
+                    )
                     resume_ckpt = str(Path(artifact_dir) / "model.ckpt")
                 except Exception as e:
                     print(e)
@@ -134,7 +142,6 @@ def main(
                 resume_ckpt = cfg.train.resume_local
 
             trainer.fit(model=model, datamodule=datamodule, ckpt_path=resume_ckpt)
-
 
         # Load state dict from best performing model
         model.load_state_dict(

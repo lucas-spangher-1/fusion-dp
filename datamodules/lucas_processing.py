@@ -74,7 +74,7 @@ class ModelReadyDataset(Dataset):
 
         for i in range(len(self.inputs_embeds)):
             self.inputs_embeds[i] = torch.from_numpy(
-                scaler.transform(self.inputs_embeds[i])
+                scaler.transform(self.inputs_embeds[i]).astype("float32")
             )
 
         return
