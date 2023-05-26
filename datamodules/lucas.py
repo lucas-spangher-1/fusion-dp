@@ -56,6 +56,7 @@ class LucasDataModule(pl.LightningDataModule):
         num_workers: int = 1,
         augment: bool = False,
         debug: bool = False,
+        seed: int = 42,
         **kwargs,
     ):
         super().__init__()
@@ -73,6 +74,7 @@ class LucasDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.augment = augment
         self.debug = debug
+        self.seed = seed
 
         if data_type == "default" or data_type == "sequence":
             self.data_type = "sequence"
@@ -127,7 +129,7 @@ class LucasDataModule(pl.LightningDataModule):
             train_inds,
             test_inds,
         ) = lucas_processing.get_train_test_indices_from_Jinxiang_cases(
-            dataset=data, case_number=self.case_number, new_machine=self.new_machine
+            dataset=data, case_number=self.case_number, new_machine=self.new_machine, seed=self.seed
         )
 
         if self.debug:
@@ -151,7 +153,7 @@ class LucasDataModule(pl.LightningDataModule):
         self.train_dataset, self.val_dataset = random_split(
             base_train,
             [n_train, n_val],
-            generator=Generator().manual_seed(getattr(self, "seed", 42)),
+            generator=Generator().manual_seed(self.seed),
         )
         test_shots = [data[i] for i in test_inds]
         self.test_dataset = lucas_processing.ModelReadyDataset(

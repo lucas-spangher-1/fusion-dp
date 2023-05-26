@@ -142,7 +142,7 @@ def collate_fn_seq_to_seq(dataset):
     return output
 
 
-def get_train_test_indices_from_Jinxiang_cases(dataset, case_number, new_machine):
+def get_train_test_indices_from_Jinxiang_cases(dataset, case_number, new_machine, seed, case8_percentage=0.125):
     """Get train and test indices for Jinxiang's cases.
 
     Args:
@@ -155,8 +155,26 @@ def get_train_test_indices_from_Jinxiang_cases(dataset, case_number, new_machine
         test_indices (list): List of indices for the testing set.
     """
 
+    rand = random.Random(seed)
+
     existing_machines = {"cmod", "d3d", "east"}
     existing_machines.remove(new_machine)
+    
+    if case_number == 8:
+        # Take case8_percentage of the data from each machine for test, 
+        # this ensures each machine has the same percentage of data in the test set
+        by_machine = {"cmod": set(), "d3d": set(), "east": set()}
+        test_indices = set()
+        for key, value in dataset.items():
+            by_machine[value["machine"]].add(key)
+        for _machine, inds in by_machine.items():
+            test_indices.update(rand.sample(sorted(inds), int(case8_percentage * len(inds))))
+
+        train_indices = set(dataset.keys()) - test_indices
+        return list(train_indices), list(test_indices)
+
+    # TODO: not case 8...
+
     train_indices = []
 
     new_machine_indices = {"non_disruptive": [], "disruptive": []}
