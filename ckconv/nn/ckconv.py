@@ -112,11 +112,11 @@ class CKConvBase(torch.nn.Module):
         self.causal = conv_causal
         # 3. Variable placeholders
         self.register_buffer("train_length", torch.zeros(1).int(), persistent=True)
+        self.register_buffer("initialized", torch.zeros(1).bool(), persistent=True)
         # 2. Non-persistent values
         self.register_buffer("conv_kernel", torch.zeros(1), persistent=False)
         self.register_buffer("linspace_stepsize", torch.zeros(1), persistent=False)
         self.register_buffer("kernel_positions", torch.zeros(1), persistent=False)
-        self.register_buffer("initialized", torch.zeros(1).bool(), persistent=False)
 
     def construct_kernel(self, x):
         # Construct kernel
