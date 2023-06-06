@@ -4,9 +4,11 @@ import pytorch_lightning as pl
 import glob
 import hydra
 import torchmetrics
+from . import seqseq_utils
 from torchmetrics.classification import Accuracy, Recall, F1Score
 from pytorch_lightning.callbacks import Callback
 import sys
+import traceback
 
 # project
 from optim import construct_optimizer, construct_scheduler
@@ -139,6 +141,7 @@ class ClassificationWrapper(LightningWrapperBase):
         # Binary problem?
         n_classes = network.out_layer.out_channels
         self.multiclass = n_classes != 1
+        self.seqseq = cfg.dataset.data_type == "seqseq"
 
         # Other metrics
         task = "multiclass" if self.multiclass else "binary"
@@ -157,13 +160,17 @@ class ClassificationWrapper(LightningWrapperBase):
         # Loss metric
         if self.multiclass:
             self.loss_metric = torch.nn.CrossEntropyLoss()
+            self.get_predictions = self.multiclass_prediction
+        elif self.seqseq:
+            # In seqseq, we expect a loss function of (logits, labels, lengths)
+            self.loss_metric = seqseq_utils.make_masked_shotmean_loss_fn(
+                torch.nn.BCEWithLogitsLoss()
+            )
+            self.get_predictions = seqseq_utils.get_preds_any
         else:
             self.loss_metric = torch.nn.BCEWithLogitsLoss()  # TODO: Required?
-        # Function to get predictions:
-        if self.multiclass:
-            self.get_predictions = self.multiclass_prediction
-        else:
             self.get_predictions = self.binary_prediction
+
         # Placeholders for logging of best train & validation values
         self.best_train_acc = 0.0
         self.best_val_acc = 0.0
@@ -171,19 +178,21 @@ class ClassificationWrapper(LightningWrapperBase):
         self.validation_step_outputs = []
 
     def _step(self, batch, metrics):
-        x, labels = batch
+        # batch can contain either x, labels, lengths
+        # or just x, labels, so we have to do indexing here
+        x, labels = batch[:2]
         logits = self(x)
         # Predictions
-        predictions = self.get_predictions(logits)
+        predictions = self.get_predictions(logits, *batch[2:])
         # Calculate accuracy and loss
         for metric in metrics:
             metric(predictions, labels)
 
         # For binary classification, the labels must be float
-        if not self.multiclass:
+        if not self.multiclass and not self.seqseq:
             labels = labels.float()  # N
             logits = logits.view(-1)  # N
-        loss = self.loss_metric(logits, labels)
+        loss = self.loss_metric(logits, *batch[1:])
         # Return predictions and loss
         return predictions, logits, loss
 
@@ -218,6 +227,8 @@ class ClassificationWrapper(LightningWrapperBase):
             sync_dist=self.distributed,
         )
         # Store loss and logits for on_train_epoch_end
+        if self.seqseq:
+            logits = torch.mean(logits, dim=0)
         self.train_step_outputs.append(
             {"loss": loss + reg_loss, "logits": logits.detach()}
         )
@@ -233,6 +244,8 @@ class ClassificationWrapper(LightningWrapperBase):
         self._log_metrics(
             "val", loss, on_step=False, on_epoch=True, sync_dist=self.distributed
         )
+        if self.seqseq:
+            logits = torch.mean(logits, dim=0)
         self.validation_step_outputs.append({"logits": logits})
         return logits  # used to log histograms in validation_epoch_step
 
@@ -424,5 +437,6 @@ class PyGRegressionWrapper(RegressionWrapper):
 
 class OnExceptionExit(Callback):
     def on_exception(self, trainer, module, exception):
-        print(f"exception caught, gracefully shutting down: {exception}")
+        traceback.print_exception(exception)
+        # print(f"exception caught, gracefully shutting down: {exception}")
         sys.exit("Graceful shutdown")

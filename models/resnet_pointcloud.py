@@ -161,7 +161,6 @@ class ResNetPointCloudBase(torch.nn.Module):
 
 class ResNet_pointcloud(ResNetPointCloudBase):
     def forward(self, data):
-
         # Dropout in.
         data.x = self.dropout_in(data.x)
 

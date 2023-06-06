@@ -11,13 +11,14 @@ import requests
 import gzip
 from tqdm import tqdm
 import os
+from typing import List, Tuple
 
 
 def collate_fn(batch):
-    inputs, labels = zip(*batch)
+    inputs, labels, lengths = zip(*batch)
     inputs = torch.nn.utils.rnn.pad_sequence(inputs, batch_first=True).transpose(1, 2)
     labels = torch.tensor(labels)
-    return inputs, labels
+    return inputs, labels, lengths
 
 
 class StreamingProgressResponse:
@@ -76,9 +77,11 @@ class LucasDataModule(pl.LightningDataModule):
         self.debug = debug
         self.seed = seed
 
-        if data_type == "default" or data_type == "sequence":
+        self.data_dim = 1
+        if data_type == "default":
             self.data_type = "sequence"
-            self.data_dim = 1
+        elif data_type == "sequence" or data_type == "seqseq":
+            self.data_type = data_type
         else:
             raise ValueError(f"data_type {data_type} not supported.")
 
@@ -120,7 +123,7 @@ class LucasDataModule(pl.LightningDataModule):
         with open(os.path.join(self.data_dir, self.DATA_FILENAME), "wb") as f:
             pickle.dump(data, f)
 
-    def setup(self, stage: str = None):
+    def setup(self, stage=None):
         # Load data from file
         f = open(os.path.join(self.data_dir, self.DATA_FILENAME), "rb")
         data = pickle.load(f)
@@ -129,7 +132,10 @@ class LucasDataModule(pl.LightningDataModule):
             train_inds,
             test_inds,
         ) = lucas_processing.get_train_test_indices_from_Jinxiang_cases(
-            dataset=data, case_number=self.case_number, new_machine=self.new_machine, seed=self.seed
+            dataset=data,
+            case_number=self.case_number,
+            new_machine=self.new_machine,
+            seed=self.seed,
         )
 
         if self.debug:
@@ -139,6 +145,7 @@ class LucasDataModule(pl.LightningDataModule):
         train_shots = [data[i] for i in train_inds]
         base_train = lucas_processing.ModelReadyDataset(
             shots=train_shots,
+            inds=train_inds,
             machine_hyperparameters=self.machine_hyperparameters,
             end_cutoff=self.end_cutoff,
             end_cutoff_timesteps=self.end_cutoff_timesteps,
@@ -158,6 +165,7 @@ class LucasDataModule(pl.LightningDataModule):
         test_shots = [data[i] for i in test_inds]
         self.test_dataset = lucas_processing.ModelReadyDataset(
             shots=test_shots,
+            inds=test_inds,
             machine_hyperparameters=self.machine_hyperparameters,
             end_cutoff=self.end_cutoff,
             end_cutoff_timesteps=self.end_cutoff_timesteps,

@@ -61,7 +61,7 @@ conv:
 dataset:
   name: 'Lucas'
   data_dir: 'data/'
-  data_type: 'sequence'
+  data_type: 'seqseq'
   augment: True
   params:
     end_cutoff_timesteps: 8 # Used for Lucas' datase

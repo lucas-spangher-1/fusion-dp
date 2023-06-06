@@ -36,6 +36,8 @@ class ResNetBase(torch.nn.Module):
         downsampling_size = net_cfg.downsampling_size
         nonlinearity = net_cfg.nonlinearity
 
+        self.data_type = net_cfg.data_type
+
         # Define dropout_in
         self.dropout_in = torch.nn.Dropout(dropout_in)
 
@@ -180,6 +182,22 @@ class ResNet_sequence(ResNetBase):
         return out.squeeze(-1)
 
 
+class ResNet_seqseq(ResNetBase):
+    def forward(self, x):
+        # Dropout in
+        x = self.dropout_in(x)
+        # First layers
+        out = self.nonlinear(self.norm1(self.conv1(x)))
+        # Blocks
+        out = self.blocks(out)
+        # Final layer on last sequence element
+        out = self.out_norm(out)
+        # Pass through final projection layer, squeeze & return out_layer is normally a conv1d, so if we don't take the mean like we do in sequence
+        # this will retain the time part of [batch, channels, time]
+        out = self.out_layer(out)
+        return out.squeeze(-2)  # squeeze out the channel dimension
+
+
 class ResNet_image(ResNetBase):
     def forward(self, x):
         # Dropout in
@@ -198,4 +216,3 @@ class ResNet_image(ResNetBase):
         # Final layer
         out = self.out_layer(out)
         return out.squeeze()
-

@@ -30,6 +30,7 @@ def construct_model(
 
     # Overwrite data_dim in cfg.net
     cfg.net.data_dim = data_dim
+    cfg.net.data_type = data_type
 
     # Print automatically derived model parameters.
     print(

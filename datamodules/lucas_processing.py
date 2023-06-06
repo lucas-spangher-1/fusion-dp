@@ -3,6 +3,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from sklearn.preprocessing import RobustScaler
 import random
+from typing import List
 
 
 class ModelReadyDataset(Dataset):
@@ -10,44 +11,60 @@ class ModelReadyDataset(Dataset):
 
     Args:
         shots (list): List of shots.
+        inds (list): List of shot indices for reference.
+        end_cutoff (float): Fraction of the shot to use as the end.
+        end_cutoff_timesteps (int): Number of timesteps to cut off the end of the shot.
         max_length (int): Maximum length of the input sequence.
 
     Attributes:
-        input_embeds (list): List of input embeddings.
-        labels (list): List of labels.
-        shot_inds (list) = List of shot inds
-        shot_lens (list): List of shot lengths.
+        xs (list): List of input embeddings.
+        ys (list): List of labels.
+        metas (list) = List of shot metadata like machine, index, etc
     """
 
     def __init__(
         self,
-        shots,
+        shots: List,
+        inds: List,
         end_cutoff,
         end_cutoff_timesteps,
         machine_hyperparameters,
         max_length=2048,
     ):
-        self.inputs_embeds = []
-        self.labels = []
+        self.xs = []
+        self.ys = []
+        self.metas = []
 
-        for shot in shots:
+        for shot, ind in zip(shots, inds):
             shot_df = shot["data"]
             o = torch.tensor(
                 [shot["label"] * machine_hyperparameters[shot["machine"]]],
                 dtype=torch.float32,
             )
 
+            shot_end = 0
             if end_cutoff:
                 shot_end = int(len(shot_df) * (end_cutoff))
             elif end_cutoff_timesteps:
                 shot_end = int(len(shot_df) - end_cutoff_timesteps)
+            else:
+                raise Exception(
+                    "Must provide either end_cutoff or end_cutoff_timesteps"
+                )
 
             d = torch.tensor(shot_df[:shot_end])
 
             # test if the shot's length is between 25 and max_length
             if 25 <= len(d) <= max_length:
-                self.inputs_embeds.append(d)
-                self.labels.append(o)
+                self.xs.append(d)
+                self.ys.append(o)
+                self.metas.append(
+                    {
+                        "ind": ind,
+                        "shot_len": shot_end,
+                        "machine": shot["machine"],
+                    }
+                )
 
     def robustly_scale(self):
         """Robustly scale the data.
@@ -56,11 +73,11 @@ class ModelReadyDataset(Dataset):
             scaler (object): Scaler used to scale the data."""
 
         scaler = RobustScaler()
-        combined = torch.cat(self.inputs_embeds)
+        combined = torch.cat(self.xs)
         scaler.fit(combined)
-        for i in range(len(self.inputs_embeds)):
-            self.inputs_embeds[i] = torch.from_numpy(
-                scaler.transform(self.inputs_embeds[i]).astype("float32")
+        for i in range(len(self.xs)):
+            self.xs[i] = torch.from_numpy(
+                scaler.transform(self.xs[i]).astype("float32")
             )
 
         return scaler
@@ -72,26 +89,24 @@ class ModelReadyDataset(Dataset):
             scaler (object): Scaler to use to scale the data.
         """
 
-        for i in range(len(self.inputs_embeds)):
-            self.inputs_embeds[i] = torch.from_numpy(
-                scaler.transform(self.inputs_embeds[i]).astype("float32")
+        for i in range(len(self.xs)):
+            self.xs[i] = torch.from_numpy(
+                scaler.transform(self.xs[i]).astype("float32")
             )
 
         return
 
     def __len__(self):
-        return len(self.inputs_embeds)
+        return len(self.xs)
 
     def __getitem__(self, idx):
         """
-        Returns: a tuple of (input_embeds, labels) where
+        Returns: a tuple of (input_embeds, labels, len) where
             inputs_embeds (tensor): Input embeddings.
             labels (tensor): a 0/1 label for disruptions/no disruption
+            len (int): Length of the shot.
         """
-        return (
-            self.inputs_embeds[idx],
-            self.labels[idx],
-        )
+        return (self.xs[idx], self.ys[idx], self.metas[idx]["shot_len"])
 
 
 def collate_fn_seq_to_label(dataset):
@@ -142,7 +157,9 @@ def collate_fn_seq_to_seq(dataset):
     return output
 
 
-def get_train_test_indices_from_Jinxiang_cases(dataset, case_number, new_machine, seed, case8_percentage=0.125):
+def get_train_test_indices_from_Jinxiang_cases(
+    dataset, case_number, new_machine, seed, case8_percentage=0.125
+):
     """Get train and test indices for Jinxiang's cases.
 
     Args:
@@ -159,16 +176,18 @@ def get_train_test_indices_from_Jinxiang_cases(dataset, case_number, new_machine
 
     existing_machines = {"cmod", "d3d", "east"}
     existing_machines.remove(new_machine)
-    
+
     if case_number == 8:
-        # Take case8_percentage of the data from each machine for test, 
+        # Take case8_percentage of the data from each machine for test,
         # this ensures each machine has the same percentage of data in the test set
         by_machine = {"cmod": set(), "d3d": set(), "east": set()}
         test_indices = set()
         for key, value in dataset.items():
             by_machine[value["machine"]].add(key)
         for _machine, inds in by_machine.items():
-            test_indices.update(rand.sample(sorted(inds), int(case8_percentage * len(inds))))
+            test_indices.update(
+                rand.sample(sorted(inds), int(case8_percentage * len(inds)))
+            )
 
         train_indices = set(dataset.keys()) - test_indices
         return list(train_indices), list(test_indices)
