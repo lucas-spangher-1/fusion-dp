@@ -222,7 +222,7 @@ class ClassificationWrapper(LightningWrapperBase):
             "train",
             loss,
             on_step=True,
-            on_epoch=False,
+            on_epoch=True,
             prog_bar=True,
             sync_dist=self.distributed,
         )
