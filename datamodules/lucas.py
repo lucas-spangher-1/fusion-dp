@@ -18,7 +18,7 @@ def collate_fn(batch):
     inputs, labels, lengths = zip(*batch)
     inputs = torch.nn.utils.rnn.pad_sequence(inputs, batch_first=True).transpose(1, 2)
     labels = torch.tensor(labels)
-    return inputs, labels, lengths
+    return (inputs, torch.tensor(lengths)), labels, lengths
 
 
 class StreamingProgressResponse:

@@ -167,6 +167,7 @@ class ResNetBase(torch.nn.Module):
 
 class ResNet_sequence(ResNetBase):
     def forward(self, x):
+        x, lens = x
         # Dropout in
         x = self.dropout_in(x)
         # First layers
@@ -176,6 +177,10 @@ class ResNet_sequence(ResNetBase):
         # Final layer on last sequence element
         out = self.out_norm(out)
         # Take the mean of all predictions until the last element
+        mask = torch.ones_like(out)
+        for i in range(mask.shape[0]):
+            mask[i, :, lens[i] :] = 0
+        out = mask * out
         out = out.mean(dim=-1, keepdim=True)
         # Pass through final projection layer, squeeze & return
         out = self.out_layer(out)

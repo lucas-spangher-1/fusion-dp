@@ -156,11 +156,12 @@ class ClassificationWrapper(LightningWrapperBase):
         self.test_acc = Accuracy(num_classes=n_classes, task=task)
         self.test_recall = Recall(task=task)
         self.test_f1 = F1Score(task=task)
+        self.pass_lens = True
 
         # Loss metric
         if self.multiclass:
             self.loss_metric = torch.nn.CrossEntropyLoss()
-            self.get_predictions = self.multiclass_prediction
+            self.get_predictions = lambda x, _: self.multiclass_prediction(x)
         elif self.seqseq:
             # In seqseq, we expect a loss function of (logits, labels, lengths)
             self.loss_metric = seqseq_utils.make_masked_shotmean_loss_fn(
@@ -168,8 +169,8 @@ class ClassificationWrapper(LightningWrapperBase):
             )
             self.get_predictions = seqseq_utils.get_preds_any
         else:
-            self.loss_metric = torch.nn.BCEWithLogitsLoss()  # TODO: Required?
-            self.get_predictions = self.binary_prediction
+            self.loss_metric = lambda x, y, *args: torch.nn.BCEWithLogitsLoss()(x, y)
+            self.get_predictions = lambda x, _: self.binary_prediction(x)
 
         # Placeholders for logging of best train & validation values
         self.best_train_acc = 0.0
@@ -180,8 +181,12 @@ class ClassificationWrapper(LightningWrapperBase):
     def _step(self, batch, metrics):
         # batch can contain either x, labels, lengths
         # or just x, labels, so we have to do indexing here
-        x, labels = batch[:2]
-        logits = self(x)
+        (x, lens), labels = batch[:2]
+        logits = None
+        if self.pass_lens:
+            logits = self((x, lens))
+        else:
+            logits = self(x)
         # Predictions
         predictions = self.get_predictions(logits, *batch[2:])
         # Calculate accuracy and loss
