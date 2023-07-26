@@ -176,12 +176,15 @@ class ResNet_sequence(ResNetBase):
         out = self.blocks(out)
         # Final layer on last sequence element
         out = self.out_norm(out)
-        # Take the mean of all predictions until the last element
-        mask = torch.ones_like(out)
+        # Combine masking and multiplying by the denominator for
+        # an average of the sequence outputs
+        mask = torch.zeros_like(out)
         for i in range(mask.shape[0]):
-            mask[i, :, lens[i] :] = 0
+            mask[i, :, : lens[i]] = (
+                1 / lens[i]
+            )  # Sets the mask to 1/len for 0...len and 0 otherwise
         out = mask * out
-        out = out.mean(dim=-1, keepdim=True)
+        out = out.sum(dim=-1, keepdim=True)
         # Pass through final projection layer, squeeze & return
         out = self.out_layer(out)
         return out.squeeze(-1)
