@@ -35,6 +35,7 @@ class ResNetBase(torch.nn.Module):
         downsampling = net_cfg.downsampling
         downsampling_size = net_cfg.downsampling_size
         nonlinearity = net_cfg.nonlinearity
+        self.padded_seq_masking = net_cfg.padded_seq_masking
 
         self.data_type = net_cfg.data_type
 
@@ -167,7 +168,9 @@ class ResNetBase(torch.nn.Module):
 
 class ResNet_sequence(ResNetBase):
     def forward(self, x):
-        x, lens = x
+        lens = None
+        if self.padded_seq_masking:
+            x, lens = x  # x should be a tuple of the input seqs and lens
         # Dropout in
         x = self.dropout_in(x)
         # First layers
@@ -176,15 +179,18 @@ class ResNet_sequence(ResNetBase):
         out = self.blocks(out)
         # Final layer on last sequence element
         out = self.out_norm(out)
-        # Combine masking and multiplying by the denominator for
-        # an average of the sequence outputs
-        mask = torch.zeros_like(out)
-        for i in range(mask.shape[0]):
-            mask[i, :, : lens[i]] = (
-                1 / lens[i]
-            )  # Sets the mask to 1/len for 0...len and 0 otherwise
-        out = mask * out
-        out = out.sum(dim=-1, keepdim=True)
+        if self.padded_seq_masking:
+            # Combine masking and multiplying by the denominator for
+            # an average of the sequence outputs
+            mask = torch.zeros_like(out)
+            for i in range(mask.shape[0]):
+                mask[i, :, : lens[i]] = (
+                    1 / lens[i]
+                )  # Sets the mask to 1/len for 0...len and 0 otherwise
+            out = mask * out
+            out = out.sum(dim=-1, keepdim=True)
+        else:
+            out = out.mean(dim=-1, keepdim=True)
         # Pass through final projection layer, squeeze & return
         out = self.out_layer(out)
         return out.squeeze(-1)
@@ -200,7 +206,8 @@ class ResNet_seqseq(ResNetBase):
         out = self.blocks(out)
         # Final layer on last sequence element
         out = self.out_norm(out)
-        # Pass through final projection layer, squeeze & return out_layer is normally a conv1d, so if we don't take the mean like we do in sequence
+        # Pass through final projection layer, squeeze & return out_layer is normally a
+        # conv1d, so if we don't take the mean like we do in sequence
         # this will retain the time part of [batch, channels, time]
         out = self.out_layer(out)
         return out.squeeze(-2)  # squeeze out the channel dimension

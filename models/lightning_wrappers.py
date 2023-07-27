@@ -142,6 +142,7 @@ class ClassificationWrapper(LightningWrapperBase):
         n_classes = network.out_layer.out_channels
         self.multiclass = n_classes != 1
         self.seqseq = cfg.dataset.data_type == "seqseq"
+        self.pass_lens = cfg.net.mask_seq_padding
 
         # Other metrics
         task = "multiclass" if self.multiclass else "binary"
@@ -156,7 +157,6 @@ class ClassificationWrapper(LightningWrapperBase):
         self.test_acc = Accuracy(num_classes=n_classes, task=task)
         self.test_recall = Recall(task=task)
         self.test_f1 = F1Score(task=task)
-        self.pass_lens = True
 
         # Loss metric
         if self.multiclass:
@@ -179,16 +179,17 @@ class ClassificationWrapper(LightningWrapperBase):
         self.validation_step_outputs = []
 
     def _step(self, batch, metrics):
-        # batch can contain either x, labels, lengths
-        # or just x, labels, so we have to do indexing here
-        (x, lens), labels = batch[:2]
-        logits = None
+        # batch can contain either x, labels or (x, lens) labels
+        x, labels = batch[:2]
+        if self.passes_lens:
+            assert len(batch) == 3
         if self.pass_lens:
+            lens = batch[2]
             logits = self((x, lens))
         else:
             logits = self(x)
         # Predictions
-        predictions = self.get_predictions(logits, *batch[2:])
+        predictions = self.get_predictions(logits, *batch[2:])  # passes lens if present
         # Calculate accuracy and loss
         for metric in metrics:
             metric(predictions, labels)

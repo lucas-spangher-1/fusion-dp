@@ -25,6 +25,7 @@ net:
     prenorm: True
   downsampling: [] # After the indices of these blocks place a downsampling layer.
   downsampling_size: -1
+  mask_seq_padding: True
 # kernels
 kernel:
   type: "MAGNet"
@@ -64,7 +65,7 @@ dataset:
   data_type: 'sequence'
   augment: True
   params:
-    end_cutoff_timesteps: 8 # Used for Lucas' datase
+    end_cutoff_timesteps: 8 # Used for Lucas' dataset
     modelnet:
       num_nodes: -1         # For ModelNet. Number of nodes to sample.
       resampling_factor: 1  # For ModelNet. Number of times to resample each mesh in the training set.
