@@ -15,7 +15,6 @@ import datamodules
 def construct_datamodule(
     cfg: OmegaConf,
 ) -> pl.LightningDataModule:
-
     # Define num_workers
     if cfg.no_workers == -1:
         cfg.no_workers = int(os.cpu_count() / 4)

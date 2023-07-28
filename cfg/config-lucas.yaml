@@ -4,7 +4,7 @@
 device: cpu
 offline: True
 deterministic: False
-no_workers: 1
+no_workers: -1
 seed: 42
 comment: ''
 # network
@@ -25,7 +25,7 @@ net:
     prenorm: True
   downsampling: [] # After the indices of these blocks place a downsampling layer.
   downsampling_size: -1
-  mask_seq_padding: True
+  padded_seq_masking: True
 # kernels
 kernel:
   type: "MAGNet"

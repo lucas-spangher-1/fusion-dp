@@ -142,7 +142,7 @@ class ClassificationWrapper(LightningWrapperBase):
         n_classes = network.out_layer.out_channels
         self.multiclass = n_classes != 1
         self.seqseq = cfg.dataset.data_type == "seqseq"
-        self.pass_lens = cfg.net.mask_seq_padding
+        self.pass_lens = cfg.net.padded_seq_masking
 
         # Other metrics
         task = "multiclass" if self.multiclass else "binary"
@@ -158,10 +158,12 @@ class ClassificationWrapper(LightningWrapperBase):
         self.test_recall = Recall(task=task)
         self.test_f1 = F1Score(task=task)
 
-        # Loss metric
+        # loss_metric should accept (logits, labels) or
+        #   (logits, labels, lens) if seqseq
+        # get_predictions should accept (logits, lengths)
         if self.multiclass:
             self.loss_metric = torch.nn.CrossEntropyLoss()
-            self.get_predictions = lambda x, _: self.multiclass_prediction(x)
+            self.get_predictions = self.multiclass_prediction
         elif self.seqseq:
             # In seqseq, we expect a loss function of (logits, labels, lengths)
             self.loss_metric = seqseq_utils.make_masked_shotmean_loss_fn(
@@ -169,8 +171,8 @@ class ClassificationWrapper(LightningWrapperBase):
             )
             self.get_predictions = seqseq_utils.get_preds_any
         else:
-            self.loss_metric = lambda x, y, *args: torch.nn.BCEWithLogitsLoss()(x, y)
-            self.get_predictions = lambda x, _: self.binary_prediction(x)
+            self.loss_metric = torch.nn.BCEWithLogitsLoss()
+            self.get_predictions = self.binary_prediction
 
         # Placeholders for logging of best train & validation values
         self.best_train_acc = 0.0
@@ -179,17 +181,17 @@ class ClassificationWrapper(LightningWrapperBase):
         self.validation_step_outputs = []
 
     def _step(self, batch, metrics):
-        # batch can contain either x, labels or (x, lens) labels
+        # batch can contain either x, labels or x, labels, lens
         x, labels = batch[:2]
-        if self.passes_lens:
-            assert len(batch) == 3
+        lens = batch[2] if len(batch) >= 3 else None
+        logits = None
         if self.pass_lens:
-            lens = batch[2]
+            assert lens, "dataset didn't pass lens"
             logits = self((x, lens))
         else:
             logits = self(x)
         # Predictions
-        predictions = self.get_predictions(logits, *batch[2:])  # passes lens if present
+        predictions = self.get_predictions(logits, lens)  # passes lens if present
         # Calculate accuracy and loss
         for metric in metrics:
             metric(predictions, labels)
@@ -198,7 +200,13 @@ class ClassificationWrapper(LightningWrapperBase):
         if not self.multiclass and not self.seqseq:
             labels = labels.float()  # N
             logits = logits.view(-1)  # N
-        loss = self.loss_metric(logits, *batch[1:])
+
+        loss = None
+        if self.seqseq:
+            # seqseq loss requires the lens also
+            loss = self.loss_metric(logits, labels, lens)
+        else:
+            loss = self.loss_metric(logits, labels)
         # Return predictions and loss
         return predictions, logits, loss
 
@@ -312,12 +320,14 @@ class ClassificationWrapper(LightningWrapperBase):
             )
         self.validation_step_outputs.clear()
 
+    # This has a *args to ignore lengths if they get passed
     @staticmethod
-    def multiclass_prediction(logits):
+    def multiclass_prediction(logits, *args):
         return torch.argmax(logits, 1)
 
+    # This has a *args to ignore lengths if they get passed
     @staticmethod
-    def binary_prediction(logits):
+    def binary_prediction(logits, *args):
         return (logits > 0.0).squeeze().long()
 
 
