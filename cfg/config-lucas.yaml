@@ -89,6 +89,7 @@ train:
   resume_local: 'last'
   limit_train_batches: 1.0
   limit_val_batches: 1.0
+  limit_test_batches: 1.0
 optimizer:
   name: AdamW
   lr: 2e-2

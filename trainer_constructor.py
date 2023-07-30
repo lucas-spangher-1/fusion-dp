@@ -12,7 +12,6 @@ def construct_trainer(
     cfg: OmegaConf,
     wandb_logger: pl.loggers.WandbLogger,
 ) -> tuple[pl.Trainer, pl.Callback]:
-
     # Set up precision
     if cfg.train.mixed_precision:
         precision = 16
@@ -74,7 +73,9 @@ def construct_trainer(
     if cfg.device == "cuda":
         accelerator = "auto"
         sync_batchnorm = cfg.train.distributed
-        strategy = "ddp_find_unused_parameters_false" if cfg.train.distributed else "auto"
+        strategy = (
+            "ddp_find_unused_parameters_false" if cfg.train.distributed else "auto"
+        )
         devices = cfg.train.avail_gpus if cfg.train.distributed else 1
         num_nodes = cfg.train.num_nodes if (cfg.train.num_nodes != -1) else 1
     else:
@@ -101,6 +102,7 @@ def construct_trainer(
         accumulate_grad_batches=cfg.train.accumulate_grad_steps,
         limit_train_batches=cfg.train.limit_train_batches,
         limit_val_batches=cfg.train.limit_val_batches,
+        limit_test_batches=cfg.train.limit_test_batches,
         # Callbacks
         callbacks=[
             modelsummary_callback,

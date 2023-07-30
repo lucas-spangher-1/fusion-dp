@@ -5,7 +5,7 @@ import glob
 import hydra
 import torchmetrics
 from . import seqseq_utils
-from torchmetrics.classification import Accuracy, Recall, F1Score
+from torchmetrics.classification import Accuracy, Recall, F1Score, AUROC, ROC
 from pytorch_lightning.callbacks import Callback
 import sys
 import traceback
@@ -125,8 +125,6 @@ class LightningWrapperBase(pl.LightningModule):
 
 
 class ClassificationWrapper(LightningWrapperBase):
-    METRICS = ["acc", "recall", "f1"]
-
     def __init__(
         self,
         network: torch.nn.Module,
@@ -146,41 +144,64 @@ class ClassificationWrapper(LightningWrapperBase):
 
         # Other metrics
         task = "multiclass" if self.multiclass else "binary"
-        self.train_acc = Accuracy(num_classes=n_classes, task=task)
-        self.train_recall = Recall(task=task)
-        self.train_f1 = F1Score(task=task)
 
-        self.val_acc = Accuracy(num_classes=n_classes, task=task)
-        self.val_recall = Recall(task=task)
-        self.val_f1 = F1Score(task=task)
+        def make_metrics(stage, **kwargs):
+            metrics = {
+                "acc": Accuracy(**kwargs),
+                "recall": Recall(**kwargs),
+                "f1": F1Score(**kwargs),
+                "auroc": AUROC(**kwargs),
+                "roc": ROC(**kwargs),
+            }
+            # Each metric also has to be set as an attribute on the module
+            for name, metric in metrics.items():
+                setattr(self, f"{stage}_{name}", metric)
+            return metrics
 
-        self.test_acc = Accuracy(num_classes=n_classes, task=task)
-        self.test_recall = Recall(task=task)
-        self.test_f1 = F1Score(task=task)
+        kwargs = {"num_classes": n_classes, "task": task}
+        self.train_metrics = make_metrics("train", **kwargs)
+        self.val_metrics = make_metrics("val", **kwargs)
+        self.test_metrics = make_metrics("test", **kwargs)
 
         # loss_metric should accept (logits, labels) or
         #   (logits, labels, lens) if seqseq
         # get_predictions should accept (logits, lengths)
+        # get_probabilities should accept (logits, lenghts)
         if self.multiclass:
             self.loss_metric = torch.nn.CrossEntropyLoss()
             self.get_predictions = self.multiclass_prediction
+            self.get_probabilities = self.multiclass_probabilities
         elif self.seqseq:
             # In seqseq, we expect a loss function of (logits, labels, lengths)
             self.loss_metric = seqseq_utils.make_masked_shotmean_loss_fn(
                 torch.nn.BCEWithLogitsLoss()
             )
             self.get_predictions = seqseq_utils.get_preds_any
+            self.get_probabilities = seqseq_utils.get_preds_any  # TODO: revisit this
         else:
             self.loss_metric = torch.nn.BCEWithLogitsLoss()
             self.get_predictions = self.binary_prediction
+            self.get_probabilities = self.binary_probabilities
 
         # Placeholders for logging of best train & validation values
-        self.best_train_acc = 0.0
-        self.best_val_acc = 0.0
+        self.best_train_metrics = {}
+        self.best_val_metrics = {}
         self.train_step_outputs = []
         self.validation_step_outputs = []
 
-    def _step(self, batch, metrics):
+    def _step(self, batch, metrics_dict: dict, compute_metrics: bool = False):
+        """Run a single step of the model
+
+        Args:
+            batch (Tensor): the batch to run the step on
+            metrics_dict (dict): The dictionary of metrics (self.train_metrics, etc...)
+            compute_metrics (bool, optional): Whether to compute the value of each
+                metric. Otherwise, we just call `.update` to update its internal state.
+                Defaults to False.
+
+        Returns:
+            probalities (Tensor), logits (Tensor), loss (Tensor)
+        """
         # batch can contain either x, labels or x, labels, lens
         x, labels = batch[:2]
         lens = batch[2] if len(batch) >= 3 else None
@@ -190,11 +211,19 @@ class ClassificationWrapper(LightningWrapperBase):
             logits = self((x, lens))
         else:
             logits = self(x)
-        # Predictions
-        predictions = self.get_predictions(logits, lens)  # passes lens if present
-        # Calculate accuracy and loss
-        for metric in metrics:
-            metric(predictions, labels)
+        # Probabilities
+        probabilities = self.get_probabilities(logits, lens)
+
+        # Calculate metrics
+        for name, metric in metrics_dict.items():
+            # We don't want to compute roc on every step, since
+            # we only log it per epoch
+            if name == "roc":
+                metric.update(probabilities, labels.round().int())
+            elif not compute_metrics:
+                metric.update(probabilities, labels)
+            else:
+                metric(probabilities, labels)
 
         # For binary classification, the labels must be float
         if not self.multiclass and not self.seqseq:
@@ -208,38 +237,27 @@ class ClassificationWrapper(LightningWrapperBase):
         else:
             loss = self.loss_metric(logits, labels)
         # Return predictions and loss
-        return predictions, logits, loss
+        return probabilities, logits, loss
 
-    def _log_metrics(self, stage: str, loss, **kwargs):
-        self.log(f"{stage}/loss", loss, **kwargs)
-        for metric in self.METRICS:
-            m = getattr(self, f"{stage}_{metric}", None)
-            if m is not None:
-                self.log(
-                    f"{stage}/{metric}",
-                    m,
-                    **kwargs,
-                )
+    def _log_metrics(self, stage: str, metrics_dict, **kwargs):
+        for name, metric in metrics_dict.items():
+            if name != "roc":  # we just log ROC plots
+                self.log(f"{stage}/{name}", metric, **kwargs)
 
     def training_step(self, batch, batch_idx):
         # Perform step
         predictions, logits, loss = self._step(
-            batch, [self.train_acc, self.train_recall, self.train_f1]
+            batch, self.train_metrics, compute_metrics=True
         )
         # Add regularization
         if self.weight_regularizer is not None:
             reg_loss = self.weight_regularizer(self.network)
         else:
             reg_loss = 0.0
-        # Log and return loss (Required in training step)
-        self._log_metrics(
-            "train",
-            loss,
-            on_step=True,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=self.distributed,
-        )
+        # Log metrics
+        kwargs = {"on_step": True, "on_epoch": True, "sync_dist": self.distributed}
+        self.log("train/loss", loss, prog_bar=True, **kwargs)
+        self._log_metrics("train", self.train_metrics, **kwargs)
         # Store loss and logits for on_train_epoch_end
         if self.seqseq:
             logits = torch.mean(logits, dim=0)
@@ -252,12 +270,14 @@ class ClassificationWrapper(LightningWrapperBase):
     def validation_step(self, batch, batch_idx):
         # Perform step
         predictions, logits, loss = self._step(
-            batch, [self.val_acc, self.val_recall, self.val_f1]
+            batch, self.val_metrics, compute_metrics=False
         )
         # Log and return loss (Required in training step)
-        self._log_metrics(
-            "val", loss, on_step=False, on_epoch=True, sync_dist=self.distributed
-        )
+
+        kwargs = {"on_epoch": True, "sync_dist": self.distributed}
+        self.log("val/loss", loss, **kwargs)
+        self._log_metrics("val", self.val_metrics, **kwargs)
+
         if self.seqseq:
             logits = torch.mean(logits, dim=0)
         self.validation_step_outputs.append({"logits": logits})
@@ -266,10 +286,14 @@ class ClassificationWrapper(LightningWrapperBase):
     def test_step(self, batch, batch_idx):
         # Perform step
         predictions, _, loss = self._step(
-            batch, [self.test_acc, self.test_recall, self.test_f1]
+            batch, self.test_metrics, compute_metrics=False
         )
+        self.log("test/loss", loss, on_epoch=True, sync_dist=self.distributed)
         self._log_metrics(
-            "test", loss, on_step=False, on_epoch=True, sync_dist=self.distributed
+            "test",
+            self.test_metrics,
+            on_epoch=True,
+            sync_dist=self.distributed,
         )
 
     def on_train_epoch_end(self):
@@ -281,19 +305,25 @@ class ClassificationWrapper(LightningWrapperBase):
         self.logger.experiment.log(
             {
                 "train/logits": wandb.Histogram(flattened_logits.to("cpu")),
-                "global_step": self.global_step,
             }
         )
         # Log best accuracy
-        train_acc = self.trainer.callback_metrics["train/acc_epoch"]
-        if train_acc > self.best_train_acc:
-            self.best_train_acc = train_acc.item()
-            self.logger.experiment.log(
-                {
-                    "train/best_acc": self.best_train_acc,
-                    "global_step": self.global_step,
-                }
-            )
+        for name, _ in self.train_metrics.items():
+            if name == "roc":
+                continue
+            this_epoch = self.trainer.callback_metrics[f"train/{name}_epoch"]
+            prev_best = self.best_train_metrics.get(name, None)
+            if not prev_best or this_epoch > prev_best:
+                self.best_train_metrics[name] = this_epoch.item()
+                self.logger.experiment.log(
+                    {
+                        f"train/best_{name}": self.best_train_metrics[name],
+                    }
+                )
+
+        fig, _ = self.train_metrics["roc"].plot()
+        self.logger.experiment.log({"train/roc": fig})
+
         self.train_step_outputs.clear()
 
     def on_validation_epoch_end(self):
@@ -305,20 +335,31 @@ class ClassificationWrapper(LightningWrapperBase):
             {
                 "val/logits": wandb.Histogram(flattened_logits.to("cpu")),
                 "val/logit_max_abs_value": flattened_logits.abs().max().item(),
-                "global_step": self.global_step,
             }
         )
+        print(self.trainer.callback_metrics.keys())
         # Log best accuracy
-        val_acc = self.trainer.callback_metrics["val/acc"]
-        if val_acc > self.best_val_acc:
-            self.best_val_acc = val_acc.item()
-            self.logger.experiment.log(
-                {
-                    "val/best_acc": self.best_val_acc,
-                    "global_step": self.global_step,
-                }
-            )
+        for name, _ in self.val_metrics.items():
+            if name == "roc":
+                continue
+            this_epoch = self.trainer.callback_metrics[f"val/{name}"]
+            prev_best = self.best_val_metrics.get(name, None)
+            if not prev_best or this_epoch > prev_best:
+                self.best_val_metrics[name] = this_epoch.item()
+                self.logger.experiment.log(
+                    {
+                        f"val/best_{name}": self.best_val_metrics[name],
+                    }
+                )
+
+        fig, _ = self.val_metrics["roc"].plot()
+        self.logger.experiment.log({"val/roc": fig})
+
         self.validation_step_outputs.clear()
+
+    def on_test_epoch_end(self):
+        fig, _ = self.test_metrics["roc"].plot()
+        self.logger.experiment.log({"test/roc": fig})
 
     # This has a *args to ignore lengths if they get passed
     @staticmethod
@@ -327,8 +368,18 @@ class ClassificationWrapper(LightningWrapperBase):
 
     # This has a *args to ignore lengths if they get passed
     @staticmethod
+    def multiclass_probabilities(logits, *args):
+        return torch.softmax(logits, 1)
+
+    # This has a *args to ignore lengths if they get passed
+    @staticmethod
     def binary_prediction(logits, *args):
         return (logits > 0.0).squeeze().long()
+
+    # This has a *args to ignore lengths if they get passed
+    @staticmethod
+    def binary_probabilities(logits, *args):
+        return torch.sigmoid(logits).squeeze()
 
 
 class RegressionWrapper(LightningWrapperBase):
