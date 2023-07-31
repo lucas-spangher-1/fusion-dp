@@ -1,8 +1,7 @@
-FROM pytorchlightning/pytorch_lightning:base-cuda-py3.10-torch2.0-cuda11.7.1
+FROM nvcr.io/nvidia/pytorch:23.07-py3
 
-# Working directory
-WORKDIR .
+COPY requirements.txt ./requirements.txt
 
 # Install dependencies
-RUN pip install -r requirements-docker.txt
-
+RUN pip install --upgrade pip
+RUN pip install -r requirements.txt
