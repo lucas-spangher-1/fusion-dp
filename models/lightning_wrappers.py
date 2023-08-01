@@ -150,8 +150,8 @@ class ClassificationWrapper(LightningWrapperBase):
                 "acc": Accuracy(**kwargs),
                 "recall": Recall(**kwargs),
                 "f1": F1Score(**kwargs),
-                "auroc": AUROC(**kwargs),
-                "roc": ROC(**kwargs),
+                "auroc": AUROC(thresholds=100, **kwargs),
+                "roc": ROC(thresholds=100, **kwargs),
             }
             # Each metric also has to be set as an attribute on the module
             for name, metric in metrics.items():
@@ -337,7 +337,6 @@ class ClassificationWrapper(LightningWrapperBase):
                 "val/logit_max_abs_value": flattened_logits.abs().max().item(),
             }
         )
-        print(self.trainer.callback_metrics.keys())
         # Log best accuracy
         for name, _ in self.val_metrics.items():
             if name == "roc":

@@ -17,7 +17,7 @@ def construct_datamodule(
 ) -> pl.LightningDataModule:
     # Define num_workers
     if cfg.no_workers == -1:
-        cfg.no_workers = int(os.cpu_count() / 4)
+        cfg.no_workers = min(int(os.cpu_count() / 4), 8)
 
     # Define pin_memory
     if torch.cuda.is_available() and cfg.device == "cuda":
