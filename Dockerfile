@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/pytorch:23.07-py3
+FROM pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime
 
 COPY requirements-docker.txt ./requirements-docker.txt
 
