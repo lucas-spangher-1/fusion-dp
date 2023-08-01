@@ -1,36 +1,37 @@
 # @package _global_
 
 # global parameters
-device: cuda
+device: cpu
 offline: True
 deterministic: False
-no_workers: 8
-seed: 0
+no_workers: -1
+seed: 42
 comment: ''
 # network
 net:
-  type: ""
-  no_hidden: -1
-  no_blocks: -1
+  type: "ResNet"
+  no_hidden: 140
+  no_blocks: 4
   no_stages: -1
   data_dim: 0                    # Should be overridden automatically
   dropout: 0.0
   dropout_in: 0.0
   dropout_type: Dropout2d
-  norm: ""
-  nonlinearity: ""
+  norm: "BatchNorm"
+  nonlinearity: "GELU"
   block_width_factors: [0.0, ]
   block:
-    type: default
+    type: S4
     prenorm: True
   downsampling: [] # After the indices of these blocks place a downsampling layer.
   downsampling_size: -1
+  padded_seq_masking: True
 # kernels
 kernel:
-  type: ""
-  no_hidden: -1
-  no_layers: -1
-  omega_0: 0.0
+  type: "MAGNet"
+  no_hidden: 32
+  no_layers: 3
+  omega_0: 2386.49
   input_scale: 0.0
   bias: True
   size: "same"
@@ -42,39 +43,29 @@ kernel:
   bottleneck_factor: -1 # In case of pointckconv, bottleneck is applied before pointconv.
 # mask
 mask:
-  type: ''
-  init_value: -1.
-  threshold: -1.
-  dynamic_cropping: False
+  type: 'gaussian'
+  init_value: 0.075
+  threshold: 0.1 
+  dynamic_cropping: True
   temperature: 0.0        # For sigmoid mask
   learn_mean: False
 # convolutions
 conv:
-  type: ""
-  causal: False
-  use_fft: False
+  type: "SeparableFlexConv"
+  causal: True
+  use_fft: True
   bias: True
   padding: "same"
   stride: 1
   cache: False
 # datamodules
 dataset:
-  name: ''
-  data_dir: '/data'
-  data_type: 'default'
-  augment: False
+  name: 'Lucas'
+  data_dir: 'data/'
+  data_type: 'sequence'
+  augment: True
   params:
-    permuted: False       # For permuted sMNIST
-    noise_padded: False   # For noise-padded CIFAR10
-    grayscale: False      # For LRA-Image dataset
-    memory_size: -1       # For copy memory problem
-    mfcc: False           # For MFCC pre-processing on SpeechCommands
-    drop_rate: 0.0        # For irregular SpeechCommands and CharTrajetories
-    target_idx: 0         # For QM9. It defines the property to predict. target_idx in [0, 18]
-    num_nodes: 1024       # For ModelNet. Number of nodes to sample.
-    metric: 'MAE'
-    seq_length: -1
-    resolution: 32        # Used for PathFinder
+    end_cutoff_timesteps: 8 # Used for Lucas' dataset
     modelnet:
       num_nodes: -1         # For ModelNet. Number of nodes to sample.
       resampling_factor: 1  # For ModelNet. Number of times to resample each mesh in the training set.
@@ -84,11 +75,11 @@ dataset:
 # training
 train:
   do: True
-  mixed_precision: False
-  epochs: -1
-  batch_size: -1
+  mixed_precision: False 
+  epochs: 210
+  batch_size: 50
   grad_clip: 0.0
-  max_epochs_no_improvement: 100
+  max_epochs_no_improvement: 40
   track_grad_norm: -1 # -1 for no tracking.
   accumulate_grad_steps: 1 # Accumulate gradient over different batches.
   distributed: False
@@ -98,19 +89,20 @@ train:
   resume_local: 'last'
   limit_train_batches: 1.0
   limit_val_batches: 1.0
+  limit_test_batches: 1.0
 optimizer:
-  name: Adam
-  lr: 0.0
-  mask_lr_ratio: 1.
+  name: AdamW
+  lr: 2e-2
+  mask_lr_ratio: 1.0
   momentum: -1.
   nesterov: False
   weight_decay: 0.0
 scheduler:
-  name: ''
+  name: 'cosine'
   decay_steps: -1
   factor: -1.0
   patience: -1
-  warmup_epochs: -1
+  warmup_epochs: 10
   mode: 'max'
 # testing
 test:
