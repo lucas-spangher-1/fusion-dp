@@ -1,7 +1,7 @@
 FROM nvcr.io/nvidia/pytorch:23.07-py3
 
-COPY requirements.txt ./requirements.txt
+COPY requirements-docker.txt ./requirements-docker.txt
 
 # Install dependencies
 RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+RUN pip install -r requirements-docker.txt
