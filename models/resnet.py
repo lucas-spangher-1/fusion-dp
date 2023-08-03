@@ -167,10 +167,8 @@ class ResNetBase(torch.nn.Module):
 
 
 class ResNet_sequence(ResNetBase):
-    def forward(self, x):
-        lens = None
-        if self.padded_seq_masking:
-            x, lens = x  # x should be a tuple of the input seqs and lens
+    # here x is always without lens
+    def __blocks_normed(self, x):
         # Dropout in
         x = self.dropout_in(x)
         # First layers
@@ -179,6 +177,13 @@ class ResNet_sequence(ResNetBase):
         out = self.blocks(out)
         # Final layer on last sequence element
         out = self.out_norm(out)
+        return out
+
+    def forward(self, x):
+        lens = None
+        if self.padded_seq_masking:
+            x, lens = x  # x should be a tuple of the input seqs and lens
+        out = self.__blocks_normed(x)
         if self.padded_seq_masking:
             # Combine masking and multiplying by the denominator for
             # an average of the sequence outputs
@@ -192,6 +197,16 @@ class ResNet_sequence(ResNetBase):
         else:
             out = out.mean(dim=-1, keepdim=True)
         # Pass through final projection layer, squeeze & return
+        out = self.out_layer(out)
+        return out.squeeze(-1)
+
+    def forward_unrolled(self, x):
+        lens = None
+        if self.padded_seq_masking:
+            x, lens = x  # x should be a tuple of the input seqs and lens
+        out = self.__blocks_normed(x)
+        out = torch.cumsum(out, dim=-1)
+        out = out / torch.arange(1, out.shape[-1] + 1)
         out = self.out_layer(out)
         return out.squeeze(-1)
 
