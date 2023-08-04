@@ -49,8 +49,8 @@ class LightningWrapperBase(pl.LightningModule):
         self.distributed = cfg.train.distributed and cfg.train.avail_gpus != 1
         self.save_hyperparameters(ignore=["network"])
 
-    def forward(self, x):
-        return self.network(x)
+    def forward(self, *args):
+        return self.network(*args)
 
     def configure_optimizers(self):
         # Construct optimizer & scheduler
@@ -141,8 +141,7 @@ class ClassificationWrapper(LightningWrapperBase):
         # Binary problem?
         n_classes = network.out_layer.out_channels
         self.multiclass = n_classes != 1
-        self.seqseq = cfg.dataset.data_type == "seqseq"
-        self.pass_lens = cfg.net.padded_seq_masking
+        self.seq_out = network.OUTPUT_TYPE == "sequence"
 
         # Other metrics
         task = "multiclass" if self.multiclass else "binary"
@@ -166,15 +165,15 @@ class ClassificationWrapper(LightningWrapperBase):
         self.test_metrics = make_metrics("test", **kwargs)
 
         # loss_metric should accept (logits, labels) or
-        #   (logits, labels, lens) if seqseq
+        #   (logits, labels, lens) if seq_out
         # get_predictions should accept (logits, lengths)
         # get_probabilities should accept (logits, lenghts)
         if self.multiclass:
             self.loss_metric = torch.nn.CrossEntropyLoss()
             self.get_predictions = self.multiclass_prediction
             self.get_probabilities = self.multiclass_probabilities
-        elif self.seqseq:
-            # In seqseq, we expect a loss function of (logits, labels, lengths)
+        elif self.seq_out:
+            # If we output a seq, we expect a loss function of (logits, labels, lengths)
             self.loss_metric = seqseq_utils.make_masked_shotmean_loss_fn(
                 torch.nn.BCEWithLogitsLoss()
             )
@@ -191,6 +190,13 @@ class ClassificationWrapper(LightningWrapperBase):
         self.train_step_outputs = []
         self.validation_step_outputs = []
 
+    def _preprocess_batch(self, batch):
+        if len(batch) < 3:
+            x, labels = batch[:2]
+            return x, labels, x.shape[-1] * torch.ones_like(labels)
+        else:
+            return batch
+
     def _step(self, batch, metrics_dict: dict, compute_metrics: bool = False):
         """Run a single step of the model
 
@@ -205,9 +211,8 @@ class ClassificationWrapper(LightningWrapperBase):
             probalities (Tensor), logits (Tensor), loss (Tensor)
         """
         # batch can contain either x, labels or x, labels, lens
-        x, labels = batch[:2]
-        lens = batch[2] if len(batch) >= 3 else None
-        logits = self((x, lens)) if self.pass_lens else self(x)
+        x, labels, lens = self._preprocess_batch(batch)
+        logits = self.forward(x, lens)
 
         # Probabilities
         probabilities = self.get_probabilities(logits, lens)
@@ -224,13 +229,13 @@ class ClassificationWrapper(LightningWrapperBase):
                 metric(probabilities, labels)
 
         # For binary classification, the labels must be float
-        if not self.multiclass and not self.seqseq:
+        if not self.multiclass:
             labels = labels.float()  # N
             logits = logits.view(-1)  # N
 
         loss = None
-        if self.seqseq:
-            # seqseq loss requires the lens also
+        if self.seq_out:
+            # loss requires the lens also
             loss = self.loss_metric(logits, labels, lens)
         else:
             loss = self.loss_metric(logits, labels)
@@ -257,8 +262,8 @@ class ClassificationWrapper(LightningWrapperBase):
         self.log("train/loss", loss, prog_bar=True, **kwargs)
         self._log_metrics("train", self.train_metrics, **kwargs)
         # Store loss and logits for on_train_epoch_end
-        if self.seqseq:
-            logits = torch.mean(logits, dim=0)
+        if self.seq_out:  # we do this to save memory, not sure the impact
+            logits = torch.mean(logits, dim=-1)
         self.train_step_outputs.append(
             {"loss": loss + reg_loss, "logits": logits.detach()}
         )
@@ -277,7 +282,7 @@ class ClassificationWrapper(LightningWrapperBase):
             self.log("val/loss", loss, **kwargs)
             self._log_metrics("val", self.val_metrics, **kwargs)
 
-            if self.seqseq:
+            if self.seq_out:
                 logits = torch.mean(logits, dim=0)
 
             # used to log histograms in validation_epoch_step
@@ -286,12 +291,11 @@ class ClassificationWrapper(LightningWrapperBase):
             # Do disruptivity plotting
             dpcfg = self.disruptivity_plot_cfg
             if dpcfg.enabled and dpcfg.batch_idx == batch_idx:
-                assert len(batch) >= 3  # contains lens
-                x, labels, lens = batch[:3]
-                # seqseq already comes out as [batch, seq_len]. sequence must be
-                # done unrolled
+                x, labels, lens = self._preprocess_batch(batch)
                 out = (
-                    self(x) if self.seqseq else self.network.forward_unrolled((x, lens))
+                    self(x, lens)
+                    if self.seq_out
+                    else self.network.forward_unrolled(x, lens)
                 )
                 fig = plotting.plot_disruption_predictions(out, batch, dpcfg)
                 self.logger.experiment.log({"val/disruptivity_plot": wandb.Image(fig)})

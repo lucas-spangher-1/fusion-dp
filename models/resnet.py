@@ -167,6 +167,8 @@ class ResNetBase(torch.nn.Module):
 
 
 class ResNet_sequence(ResNetBase):
+    OUTPUT_TYPE = "label"
+
     # here x is always without lens
     def __blocks_normed(self, x):
         # Dropout in
@@ -179,31 +181,22 @@ class ResNet_sequence(ResNetBase):
         out = self.out_norm(out)
         return out
 
-    def forward(self, x):
-        lens = None
-        if self.padded_seq_masking:
-            x, lens = x  # x should be a tuple of the input seqs and lens
+    def forward(self, x, lens, *args):
         out = self.__blocks_normed(x)
-        if self.padded_seq_masking:
-            # Combine masking and multiplying by the denominator for
-            # an average of the sequence outputs
-            mask = torch.zeros_like(out)
-            for i in range(mask.shape[0]):
-                mask[i, :, : lens[i]] = (
-                    1 / lens[i]
-                )  # Sets the mask to 1/len for 0...len and 0 otherwise
-            out = mask * out
-            out = out.sum(dim=-1, keepdim=True)
-        else:
-            out = out.mean(dim=-1, keepdim=True)
+        # Combine masking and multiplying by the denominator for
+        # an average of the sequence outputs
+        mask = torch.zeros_like(out)
+        for i in range(mask.shape[0]):
+            mask[i, :, : lens[i]] = (
+                1 / lens[i]
+            )  # Sets the mask to 1/len for 0...len and 0 otherwise
+        out = mask * out
+        out = out.sum(dim=-1, keepdim=True)
         # Pass through final projection layer, squeeze & return
         out = self.out_layer(out)
         return out.squeeze(-1)
 
-    def forward_unrolled(self, x):
-        lens = None
-        if self.padded_seq_masking:
-            x, lens = x  # x should be a tuple of the input seqs and lens
+    def forward_unrolled(self, x, *args):
         out = self.__blocks_normed(x)
         out = torch.cumsum(out, dim=-1)
         out = out / torch.arange(1, out.shape[-1] + 1)
@@ -211,8 +204,12 @@ class ResNet_sequence(ResNetBase):
         return out.squeeze(-2)  # squeeze out channel dim
 
 
-class ResNet_seqseq(ResNetBase):
-    def forward(self, x):
+class ResNetSeq_sequence(ResNetBase):
+    """ResNetSeq is a resnet-style s4 network which outputs result of the S4 blocks"""
+
+    OUTPUT_TYPE = "sequence"
+
+    def forward(self, x, *args):
         # Dropout in
         x = self.dropout_in(x)
         # First layers
@@ -229,6 +226,8 @@ class ResNet_seqseq(ResNetBase):
 
 
 class ResNet_image(ResNetBase):
+    OUTPUT_TYPE = "label"
+
     def forward(self, x):
         # Dropout in
         x = self.dropout_in(x)

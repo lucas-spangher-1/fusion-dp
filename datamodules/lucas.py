@@ -11,7 +11,6 @@ import requests
 import gzip
 from tqdm import tqdm
 import os
-from typing import List, Tuple
 
 
 def collate_fn(batch):
@@ -77,13 +76,11 @@ class LucasDataModule(pl.LightningDataModule):
         self.debug = debug
         self.seed = seed
 
-        self.data_dim = 1
-        if data_type == "default":
-            self.data_type = "sequence"
-        elif data_type == "sequence" or data_type == "seqseq":
-            self.data_type = data_type
-        else:
+        if data_type != "default" and data_type != "sequence":
             raise ValueError(f"data_type {data_type} not supported.")
+
+        self.data_dim = 1
+        self.data_type = "sequence"
 
         self.input_channels = 13
         self.output_channels = 1
