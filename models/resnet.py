@@ -208,7 +208,7 @@ class ResNet_sequence(ResNetBase):
         out = torch.cumsum(out, dim=-1)
         out = out / torch.arange(1, out.shape[-1] + 1)
         out = self.out_layer(out)
-        return out.squeeze(-1)
+        return out.squeeze(-2)  # squeeze out channel dim
 
 
 class ResNet_seqseq(ResNetBase):

@@ -8,6 +8,7 @@ from . import seqseq_utils
 from torchmetrics.classification import Accuracy, Recall, F1Score, AUROC, ROC
 from pytorch_lightning.callbacks import Callback
 import sys
+from . import plotting
 import traceback
 
 # project
@@ -33,6 +34,7 @@ class LightningWrapperBase(pl.LightningModule):
         # Save optimizer & scheduler parameters
         self.optim_cfg = cfg.optimizer
         self.scheduler_cfg = cfg.scheduler
+        self.disruptivity_plot_cfg = cfg.train.disruptivity_plot
         # Regularization metrics
         if self.optim_cfg.weight_decay != 0.0:
             self.weight_regularizer = ckconv.nn.LnLoss(
@@ -205,12 +207,8 @@ class ClassificationWrapper(LightningWrapperBase):
         # batch can contain either x, labels or x, labels, lens
         x, labels = batch[:2]
         lens = batch[2] if len(batch) >= 3 else None
-        logits = None
-        if self.pass_lens:
-            assert lens, "dataset didn't pass lens"
-            logits = self((x, lens))
-        else:
-            logits = self(x)
+        logits = self((x, lens)) if self.pass_lens else self(x)
+
         # Probabilities
         probabilities = self.get_probabilities(logits, lens)
 
@@ -269,19 +267,36 @@ class ClassificationWrapper(LightningWrapperBase):
 
     def validation_step(self, batch, batch_idx):
         # Perform step
-        predictions, logits, loss = self._step(
-            batch, self.val_metrics, compute_metrics=False
-        )
-        # Log and return loss (Required in training step)
+        with torch.no_grad():
+            predictions, logits, loss = self._step(
+                batch, self.val_metrics, compute_metrics=False
+            )
+            # Log and return loss (Required in training step)
 
-        kwargs = {"on_epoch": True, "sync_dist": self.distributed}
-        self.log("val/loss", loss, **kwargs)
-        self._log_metrics("val", self.val_metrics, **kwargs)
+            kwargs = {"on_epoch": True, "sync_dist": self.distributed}
+            self.log("val/loss", loss, **kwargs)
+            self._log_metrics("val", self.val_metrics, **kwargs)
 
-        if self.seqseq:
-            logits = torch.mean(logits, dim=0)
-        self.validation_step_outputs.append({"logits": logits})
-        return logits  # used to log histograms in validation_epoch_step
+            if self.seqseq:
+                logits = torch.mean(logits, dim=0)
+
+            # used to log histograms in validation_epoch_step
+            self.validation_step_outputs.append({"logits": logits})
+
+            # Do disruptivity plotting
+            dpcfg = self.disruptivity_plot_cfg
+            if dpcfg.enabled and dpcfg.batch_idx == batch_idx:
+                assert len(batch) >= 3  # contains lens
+                x, labels, lens = batch[:3]
+                # seqseq already comes out as [batch, seq_len]. sequence must be
+                # done unrolled
+                out = (
+                    self(x) if self.seqseq else self.network.forward_unrolled((x, lens))
+                )
+                fig = plotting.plot_disruption_predictions(out, batch, dpcfg)
+                self.logger.experiment.log({"val/disruptivity_plot": wandb.Image(fig)})
+
+            return logits
 
     def test_step(self, batch, batch_idx):
         # Perform step
