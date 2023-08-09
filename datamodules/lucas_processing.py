@@ -329,19 +329,23 @@ def length_augmentation(
             trimming. Defaults to 0.3.
 
     Returns:
-        _type_: _description_
+        (x, y, len): the x, y, len to use
     """
+    new_len = None
     if rand.random() < tiny_clip_prob:
         # sample len in [1, tiny_clip_max_len]
         new_len = math.ceil(rand.random() * tiny_clip_max_len)
+        new_len = min(new_len, x.shape[0])
         return x[:new_len], torch.tensor(0), new_len
     elif y == 1 and rand.random() < disrupt_trim_prob:
         # sample len in [len-disrupt_trim_max, len]
         new_len = len - math.floor(rand.random() * disrupt_trim_max)
+        new_len = min(new_len, x.shape[0])
         return x[:new_len], y, new_len
     elif y == 0 and rand.random() < nondisr_cut_prob:
         # sample len in [nondisr_cut_min, len]
         new_len = nondisr_cut_min + math.ceil((len - nondisr_cut_min) * rand.random())
+        new_len = min(new_len, x.shape[0])
         return x[:new_len], y, new_len
     else:
         return x, y, len
