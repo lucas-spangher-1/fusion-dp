@@ -4,6 +4,7 @@ from torch.utils.data import Dataset
 from sklearn.preprocessing import RobustScaler
 import random
 from typing import List
+import math
 
 
 class ModelReadyDataset(Dataset):
@@ -30,7 +31,14 @@ class ModelReadyDataset(Dataset):
         end_cutoff_timesteps,
         machine_hyperparameters,
         max_length=2048,
+        len_aug: bool = False,
+        seed: int = 42,
+        len_aug_args: dict = {},
     ):
+        self.len_aug = len_aug
+        self.len_aug_args = len_aug_args
+        self.rand = random.Random(seed)
+
         self.xs = []
         self.ys = []
         self.metas = []
@@ -106,7 +114,14 @@ class ModelReadyDataset(Dataset):
             labels (tensor): a 0/1 label for disruptions/no disruption
             len (int): Length of the shot.
         """
-        return (self.xs[idx], self.ys[idx], self.metas[idx]["shot_len"])
+        # for length augmentation, we clip up to
+        x, y, len = self.xs[idx], self.ys[idx], self.metas[idx]["shot_len"]
+
+        if self.len_aug:
+            x, y, len = length_augmentation(x, y, len, self.rand, **self.len_aug_args)
+
+        assert x.shape[0] == len
+        return x, y, len
 
 
 def collate_fn_seq_to_label(dataset):
@@ -189,8 +204,9 @@ def get_train_test_indices_from_Jinxiang_cases(
                 rand.sample(sorted(inds), int(case8_percentage * len(inds)))
             )
 
-        train_indices = set(dataset.keys()) - test_indices
-        return list(train_indices), list(test_indices)
+        train_indices = list(set(dataset.keys()) - test_indices)
+        rand.shuffle(train_indices)
+        return train_indices, list(test_indices)
 
     # TODO: not case 8...
 
@@ -223,18 +239,18 @@ def get_train_test_indices_from_Jinxiang_cases(
     if case_number in {1, 2, 4, 5, 6, 8, 9, 10, 11, 12}:
         train_indices.extend(new_machine_indices["non_disruptive"])
 
-    test_indices = random.sample(
+    test_indices = rand.sample(
         new_machine_indices["non_disruptive"],
         len(new_machine_indices["non_disruptive"]) // 8,
     )
 
     if case_number in {1, 3, 4, 5, 7, 8, 9, 11, 12}:
         if len(new_machine_indices["disruptive"]) > 40:
-            disruptive_samples = random.sample(new_machine_indices["disruptive"], 40)
+            disruptive_samples = rand.sample(new_machine_indices["disruptive"], 40)
             train_indices.extend(disruptive_samples[:20])
             test_indices.extend(disruptive_samples[20:])
         else:
-            train_indices.extend(random.sample(new_machine_indices["disruptive"], 20))
+            train_indices.extend(rand.sample(new_machine_indices["disruptive"], 20))
             test_indices.extend(
                 random.sample(
                     new_machine_indices["disruptive"],
@@ -242,7 +258,7 @@ def get_train_test_indices_from_Jinxiang_cases(
                 )
             )
 
-    random.shuffle(train_indices)
+    rand.shuffle(train_indices)
 
     # Create test set by sampling 20% of the new machine's shots
 
@@ -278,6 +294,57 @@ def get_class_weights(train_dataset):
     print(class_weights)
 
     return class_weights
+
+
+def length_augmentation(
+    x,
+    y,
+    len,
+    rand: random.Random,
+    tiny_clip_max_len=30,
+    tiny_clip_prob=0.05,
+    disrupt_trim_max=10,
+    disrupt_trim_prob=0.2,
+    nondisr_cut_min=15,
+    nondisr_cut_prob=0.3,
+):
+    """Perform length augmentation clipping.
+
+    Args:
+        x (torch.Tensor): the input x tensor
+        y (torch.Tensor): the torch tensor with the y input
+        len (int): the length of x
+        rand (random.Random): the random sampler to draw from
+        tiny_clip_max_len (int, optional): The maximum length to trim a sequence to when
+            doing tiny clipping. Defaults to 30.
+        tiny_clip_prob (float, optional): The probability of doing tiny clipping.
+            Defaults to 0.05.
+        disrupt_trim_max (int, optional): The maximum amount to remove from the end of
+            a disruption when doing trimming. Defaults to 10.
+        disrupt_trim_prob (float, optional): The probability of doing disruption
+            trimming. Defaults to 0.2.
+        nondisr_cut_min (int, optional): The minimum size to cut non-disruptions to.
+            Defaults to 15.
+        nondisr_cut_prob (float, optional): The probability of doing non-disruption
+            trimming. Defaults to 0.3.
+
+    Returns:
+        _type_: _description_
+    """
+    if rand.random() < tiny_clip_prob:
+        # sample len in [1, tiny_clip_max_len]
+        new_len = math.ceil(rand.random() * tiny_clip_max_len)
+        return x[:new_len], torch.tensor(0), new_len
+    elif y == 1 and rand.random() < disrupt_trim_prob:
+        # sample len in [len-disrupt_trim_max, len]
+        new_len = len - math.floor(rand.random() * disrupt_trim_max)
+        return x[:new_len], y, new_len
+    elif y == 0 and rand.random() < nondisr_cut_prob:
+        # sample len in [nondisr_cut_min, len]
+        new_len = nondisr_cut_min + math.ceil((len - nondisr_cut_min) * rand.random())
+        return x[:new_len], y, new_len
+    else:
+        return x, y, len
 
 
 def get_class_weights_seq_to_seq(train_dataset):

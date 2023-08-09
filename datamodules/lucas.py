@@ -52,11 +52,12 @@ class LucasDataModule(pl.LightningDataModule):
         batch_size: int = 32,
         test_batch_size: int = 32,
         generator: Optional[Generator] = None,
-        val_split: float = 0.8,
+        val_percent: float = 0.1,
         num_workers: int = 1,
         augment: bool = False,
         debug: bool = False,
         seed: int = 42,
+        len_aug_args: dict = {},
         **kwargs,
     ):
         super().__init__()
@@ -70,9 +71,10 @@ class LucasDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.test_batch_size = test_batch_size
         self.generator = generator
-        self.val_split = val_split
+        self.val_percent = val_percent
         self.num_workers = num_workers
         self.augment = augment
+        self.len_aug_args = len_aug_args
         self.debug = debug
         self.seed = seed
 
@@ -139,27 +141,29 @@ class LucasDataModule(pl.LightningDataModule):
             train_inds = train_inds[:80]
             test_inds = test_inds[:20]
 
-        train_shots = [data[i] for i in train_inds]
-        base_train = lucas_processing.ModelReadyDataset(
+        n_train = int(round(len(train_inds) * self.val_percent))
+        n_val = len(train_inds) - n_train
+
+        train_shots = [data[i] for i in train_inds[n_val:]]
+        val_shots = [data[i] for i in train_inds[:n_val]]
+        test_shots = [data[i] for i in test_inds]
+
+        self.train_dataset = lucas_processing.ModelReadyDataset(
             shots=train_shots,
             inds=train_inds,
             machine_hyperparameters=self.machine_hyperparameters,
             end_cutoff=self.end_cutoff,
             end_cutoff_timesteps=self.end_cutoff_timesteps,
+            len_aug=self.augment,
+            len_aug_args=self.len_aug_args,
         )
-        # TODO: hardcode the scaler values in the future so we don't need to load
-        # both train/test always
-        # TODO: just scale on the train and not train+val
-        scaler = base_train.robustly_scale()
-
-        n_train = math.floor(len(base_train) * self.val_split)
-        n_val = len(base_train) - n_train
-        self.train_dataset, self.val_dataset = random_split(
-            base_train,
-            [n_train, n_val],
-            generator=Generator().manual_seed(self.seed),
+        self.val_dataset = lucas_processing.ModelReadyDataset(
+            shots=val_shots,
+            inds=train_inds,
+            machine_hyperparameters=self.machine_hyperparameters,
+            end_cutoff=self.end_cutoff,
+            end_cutoff_timesteps=self.end_cutoff_timesteps,
         )
-        test_shots = [data[i] for i in test_inds]
         self.test_dataset = lucas_processing.ModelReadyDataset(
             shots=test_shots,
             inds=test_inds,
@@ -167,8 +171,12 @@ class LucasDataModule(pl.LightningDataModule):
             end_cutoff=self.end_cutoff,
             end_cutoff_timesteps=self.end_cutoff_timesteps,
         )
+        # TODO: hardcode the scaler values in the future so we don't need to load
+        # both train/test always
+        scaler = self.train_dataset.robustly_scale()
 
         self.test_dataset.robustly_scale_with_another_scaler(scaler)
+        self.val_dataset.robustly_scale_with_another_scaler(scaler)
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
         dl = DataLoader(
