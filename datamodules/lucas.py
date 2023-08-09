@@ -141,11 +141,10 @@ class LucasDataModule(pl.LightningDataModule):
             train_inds = train_inds[:80]
             test_inds = test_inds[:20]
 
-        n_train = int(round(len(train_inds) * self.val_percent))
-        n_val = len(train_inds) - n_train
+        n_val = int(round(len(train_inds) * self.val_percent))
 
-        train_shots = [data[i] for i in train_inds[n_val:]]
         val_shots = [data[i] for i in train_inds[:n_val]]
+        train_shots = [data[i] for i in train_inds[n_val:]]
         test_shots = [data[i] for i in test_inds]
 
         self.train_dataset = lucas_processing.ModelReadyDataset(

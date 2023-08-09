@@ -296,7 +296,7 @@ class ClassificationWrapper(LightningWrapperBase):
                     self(x, lens)
                     if self.seq_out
                     else self.network.forward_unrolled(x, lens)
-                )
+                ).cpu()
                 fig = plotting.plot_disruption_predictions(out, batch, dpcfg)
                 self.logger.experiment.log({"val/disruptivity_plot": wandb.Image(fig)})
 

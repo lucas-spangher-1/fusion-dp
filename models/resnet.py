@@ -199,7 +199,7 @@ class ResNet_sequence(ResNetBase):
     def forward_unrolled(self, x, *args):
         out = self.__blocks_normed(x)
         out = torch.cumsum(out, dim=-1)
-        out = out / torch.arange(1, out.shape[-1] + 1)
+        out = out / torch.arange(1, out.shape[-1] + 1, device=out.device)
         out = self.out_layer(out)
         return out.squeeze(-2)  # squeeze out channel dim
 
