@@ -180,7 +180,9 @@ class ClassificationWrapper(LightningWrapperBase):
             self.get_predictions = seqseq_utils.get_preds_any
             self.get_probabilities = seqseq_utils.get_preds_any  # TODO: revisit this
         else:
-            self.loss_metric = torch.nn.BCEWithLogitsLoss()
+            self.loss_metric = torch.nn.BCEWithLogitsLoss(
+                pos_weight=torch.tensor(cfg.train.pos_weight, dtype=torch.float)
+            )
             self.get_predictions = self.binary_prediction
             self.get_probabilities = self.binary_probabilities
 

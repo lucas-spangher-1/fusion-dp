@@ -143,6 +143,10 @@ class LucasDataModule(pl.LightningDataModule):
 
         n_val = int(round(len(train_inds) * self.val_percent))
 
+        # make sure there are no duplicate indices
+        assert len(set(train_inds)) == len(train_inds)
+        assert len(set(test_inds)) == len(test_inds)
+
         val_shots = [data[i] for i in train_inds[:n_val]]
         train_shots = [data[i] for i in train_inds[n_val:]]
         test_shots = [data[i] for i in test_inds]

@@ -25,7 +25,6 @@ net:
     prenorm: True
   downsampling: [] # After the indices of these blocks place a downsampling layer.
   downsampling_size: -1
-  padded_seq_masking: True
 # kernels
 kernel:
   type: "MAGNet"
@@ -94,6 +93,7 @@ train:
   avail_gpus: -1 # TODO
   resume_wandb: 'latest' # won't do anything in offline mode
   resume_local: 'last'
+  pos_weight: 1.0
   limit_train_batches: 1.0
   limit_val_batches: 1.0
   limit_test_batches: 1.0

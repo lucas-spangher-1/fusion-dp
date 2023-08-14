@@ -35,7 +35,6 @@ class ResNetBase(torch.nn.Module):
         downsampling = net_cfg.downsampling
         downsampling_size = net_cfg.downsampling_size
         nonlinearity = net_cfg.nonlinearity
-        self.padded_seq_masking = net_cfg.padded_seq_masking
 
         self.data_type = net_cfg.data_type
 
