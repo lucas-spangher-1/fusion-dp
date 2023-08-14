@@ -67,9 +67,9 @@ dataset:
     end_cutoff_timesteps: 8 # Used for Lucas' dataset
     len_aug_args:
       tiny_clip_max_len: 30
-      tiny_clip_prob: 0.05
+      tiny_clip_prob: 0.0
       disrupt_trim_max: 10
-      disrupt_trim_prob: 0.2
+      disrupt_trim_prob: 0.0
       nondisr_cut_min: 1
       nondisr_cut_prob: 0.3
     modelnet:
