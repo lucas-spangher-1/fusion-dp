@@ -1,10 +1,9 @@
-import math
 from typing import Optional
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 from . import lucas_processing
 import pickle
-from torch.utils.data import random_split, DataLoader
+from torch.utils.data import DataLoader
 import torch
 from torch import Generator
 import requests
@@ -58,6 +57,7 @@ class LucasDataModule(pl.LightningDataModule):
         debug: bool = False,
         seed: int = 42,
         len_aug_args: dict = {},
+        taus: dict = {"cmod": 10, "d3d": 75, "east": 200},
         **kwargs,
     ):
         super().__init__()
@@ -77,6 +77,7 @@ class LucasDataModule(pl.LightningDataModule):
         self.len_aug_args = len_aug_args
         self.debug = debug
         self.seed = seed
+        self.taus = taus
 
         if data_type != "default" and data_type != "sequence":
             raise ValueError(f"data_type {data_type} not supported.")
@@ -157,6 +158,7 @@ class LucasDataModule(pl.LightningDataModule):
             machine_hyperparameters=self.machine_hyperparameters,
             end_cutoff=self.end_cutoff,
             end_cutoff_timesteps=self.end_cutoff_timesteps,
+            taus=self.taus,
             len_aug=self.augment,
             len_aug_args=self.len_aug_args,
         )
@@ -166,6 +168,7 @@ class LucasDataModule(pl.LightningDataModule):
             machine_hyperparameters=self.machine_hyperparameters,
             end_cutoff=self.end_cutoff,
             end_cutoff_timesteps=self.end_cutoff_timesteps,
+            taus=self.taus,
         )
         self.test_dataset = lucas_processing.ModelReadyDataset(
             shots=test_shots,
@@ -173,6 +176,7 @@ class LucasDataModule(pl.LightningDataModule):
             machine_hyperparameters=self.machine_hyperparameters,
             end_cutoff=self.end_cutoff,
             end_cutoff_timesteps=self.end_cutoff_timesteps,
+            taus=self.taus,
         )
         # TODO: hardcode the scaler values in the future so we don't need to load
         # both train/test always

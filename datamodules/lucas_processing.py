@@ -1,5 +1,4 @@
 import torch
-from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from sklearn.preprocessing import RobustScaler
 import random
@@ -30,6 +29,7 @@ class ModelReadyDataset(Dataset):
         end_cutoff,
         end_cutoff_timesteps,
         machine_hyperparameters,
+        taus,
         max_length=2048,
         len_aug: bool = False,
         seed: int = 42,
@@ -38,10 +38,12 @@ class ModelReadyDataset(Dataset):
         self.len_aug = len_aug
         self.len_aug_args = len_aug_args
         self.rand = random.Random(seed)
+        self.taus = taus
 
         self.xs = []
         self.ys = []
         self.metas = []
+        self.machines = []
 
         for shot, ind in zip(shots, inds):
             shot_df = shot["data"]
@@ -60,10 +62,10 @@ class ModelReadyDataset(Dataset):
                     "Must provide either end_cutoff or end_cutoff_timesteps"
                 )
 
-            d = torch.tensor(shot_df[:shot_end])
+            d = torch.tensor(shot_df[:shot_end], dtype=torch.float32)
 
-            # test if the shot's length is between 25 and max_length
-            if 25 <= len(d) <= max_length:
+            # test if the shot's length is between 15 and max_length
+            if 15 <= len(d) <= max_length:
                 self.xs.append(d)
                 self.ys.append(o)
                 self.metas.append(
@@ -114,62 +116,17 @@ class ModelReadyDataset(Dataset):
             labels (tensor): a 0/1 label for disruptions/no disruption
             len (int): Length of the shot.
         """
-        # for length augmentation, we clip up to
-        x, y, len = self.xs[idx], self.ys[idx], self.metas[idx]["shot_len"]
+        x, y, length = self.xs[idx], self.ys[idx], self.metas[idx]["shot_len"]
+        m = self.metas[idx]["machine"]
+        tau = self.taus[m]
 
         if self.len_aug:
-            x, y, len = length_augmentation(x, y, len, self.rand, **self.len_aug_args)
+            x, y, length = length_augmentation(
+                x, y, length, tau, self.rand, **self.len_aug_args
+            )
 
-        assert x.shape[0] == len
-        return x, y, len
-
-
-def collate_fn_seq_to_label(dataset):
-    """
-    Takes in an instance of Torch Dataset.
-    Returns:
-     * input_embeds: tensor, size: Batch x (padded) seq_length x embedding_dim
-     * label_ids: tensor, size: Batch x 1 x 1
-    """
-
-    output = {}
-
-    output["inputs_embeds"] = pad_sequence(
-        [df["inputs_embeds"].to(dtype=torch.float16) for df in dataset],
-        padding_value=-10,
-        batch_first=True,
-    )
-    output["labels"] = torch.tensor([df["labels"].to(torch.long) for df in dataset])
-    output["attention_mask"] = (output["inputs_embeds"][:, :, 1] != -10).to(torch.long)
-
-    return output
-
-
-def collate_fn_seq_to_seq(dataset):
-    """
-    Takes in an instance of Torch Dataset and collates sequences for inputs and outputs.
-    Returns:
-     * input_embeds: tensor, size: Batch x (padded) seq_length x embedding_dim
-     * label_ids: tensor, size: Batch x (padded) seq_length x 1
-    """
-
-    output = {}
-
-    output["inputs_embeds"] = pad_sequence(
-        [df["inputs_embeds"].to(dtype=torch.float16) for df in dataset],
-        padding_value=-10,
-        batch_first=True,
-    )
-
-    output["labels"] = pad_sequence(
-        [df["labels"].to(dtype=torch.long) for df in dataset],
-        padding_value=-10,
-        batch_first=True,
-    )
-
-    output["attention_mask"] = (output["inputs_embeds"][:, :, 1] != -10).to(torch.long)
-
-    return output
+        assert x.shape[0] == length
+        return x, y, length
 
 
 def get_train_test_indices_from_Jinxiang_cases(
@@ -192,6 +149,7 @@ def get_train_test_indices_from_Jinxiang_cases(
     existing_machines = {"cmod", "d3d", "east"}
     existing_machines.remove(new_machine)
 
+    assert case_number == 8, "Case number not supported"
     if case_number == 8:
         # Take case8_percentage of the data from each machine for test,
         # this ensures each machine has the same percentage of data in the test set
@@ -207,99 +165,14 @@ def get_train_test_indices_from_Jinxiang_cases(
         train_indices = list(set(dataset.keys()) - test_indices)
         rand.shuffle(train_indices)
         return train_indices, list(test_indices)
-
-    # TODO: not case 8...
-
-    train_indices = []
-
-    new_machine_indices = {"non_disruptive": [], "disruptive": []}
-
-    for key, value in dataset.items():
-        if value["machine"] == new_machine:
-            if value["label"] == 0:
-                new_machine_indices["non_disruptive"].append(key)
-            else:
-                new_machine_indices["disruptive"].append(key)
-
-        elif value["machine"] in existing_machines:
-            if case_number in {4, 5, 6, 7, 8, 9, 10, 11, 12} and value["label"] == 0:
-                train_indices.append(key)
-            if case_number in {1, 2, 3, 5, 6, 7, 8, 10, 12} and value["label"] == 1:
-                train_indices.append(key)
-            if case_number == 11 and value["label"] == 1:
-                train_indices.append(key)
-
-    if case_number == 3:
-        half_size = len(train_indices) // 2
-        train_indices = train_indices[:half_size]
-    if case_number == 11:
-        fifth_size = len(train_indices) // 5
-        train_indices = train_indices[:fifth_size]
-
-    if case_number in {1, 2, 4, 5, 6, 8, 9, 10, 11, 12}:
-        train_indices.extend(new_machine_indices["non_disruptive"])
-
-    test_indices = rand.sample(
-        new_machine_indices["non_disruptive"],
-        len(new_machine_indices["non_disruptive"]) // 8,
-    )
-
-    if case_number in {1, 3, 4, 5, 7, 8, 9, 11, 12}:
-        if len(new_machine_indices["disruptive"]) > 40:
-            disruptive_samples = rand.sample(new_machine_indices["disruptive"], 40)
-            train_indices.extend(disruptive_samples[:20])
-            test_indices.extend(disruptive_samples[20:])
-        else:
-            train_indices.extend(rand.sample(new_machine_indices["disruptive"], 20))
-            test_indices.extend(
-                random.sample(
-                    new_machine_indices["disruptive"],
-                    len(new_machine_indices["disruptive"]) // 2,
-                )
-            )
-
-    rand.shuffle(train_indices)
-
-    # Create test set by sampling 20% of the new machine's shots
-
-    # Remove test indices from training set if they were added earlier
-    train_indices = [index for index in train_indices if index not in test_indices]
-
-    return train_indices, test_indices
-
-
-def get_class_weights(train_dataset):
-    """Get class weights for the training set.
-
-    Args:
-        train_dataset (object): Training set.
-
-    Returns:
-        class_weights (list): List of class weights.
-    """
-    class_counts = {}
-
-    for i in range(len(train_dataset)):
-        df = train_dataset[i]
-        label = int(df["labels"][0])
-        if label in class_counts.keys():
-            class_counts[label] += 1
-        else:
-            class_counts[label] = 1
-    class_weights = [
-        class_counts[key] / sum(class_counts.values()) for key in class_counts.keys()
-    ]
-
-    print("class weights: ")
-    print(class_weights)
-
-    return class_weights
+    return ([], [])
 
 
 def length_augmentation(
     x,
     y,
-    len,
+    length,
+    tau,
     rand: random.Random,
     tiny_clip_max_len=30,
     tiny_clip_prob=0.05,
@@ -307,13 +180,16 @@ def length_augmentation(
     disrupt_trim_prob=0.2,
     nondisr_cut_min=15,
     nondisr_cut_prob=0.3,
+    tau_trim_prob=0.2,
+    tau_trim_max=10,
 ):
+    # TODO: actually do a logical or on all these cases
     """Perform length augmentation clipping.
 
     Args:
         x (torch.Tensor): the input x tensor
         y (torch.Tensor): the torch tensor with the y input
-        len (int): the length of x
+        length (int): the length of x
         rand (random.Random): the random sampler to draw from
         tiny_clip_max_len (int, optional): The maximum length to trim a sequence to when
             doing tiny clipping. Defaults to 30.
@@ -327,52 +203,42 @@ def length_augmentation(
             Defaults to 15.
         nondisr_cut_prob (float, optional): The probability of doing non-disruption
             trimming. Defaults to 0.3.
+        tau_trim_prob (float, optional): the probability we do tau trimming
+        tau_trim_max (int, optional): the maximum we cut from the end of the seq
+            when doing tau trimming
 
     Returns:
         (x, y, len): the x, y, len to use
     """
     new_len = None
+
     if rand.random() < tiny_clip_prob:
         # sample len in [1, tiny_clip_max_len]
         new_len = math.ceil(rand.random() * tiny_clip_max_len)
-        new_len = min(new_len, x.shape[0])
+        new_len = min(new_len, length)
         return x[:new_len], torch.tensor(0), new_len
+
     elif y == 1 and rand.random() < disrupt_trim_prob:
         # sample len in [len-disrupt_trim_max, len]
-        new_len = len - math.floor(rand.random() * disrupt_trim_max)
-        new_len = min(new_len, x.shape[0])
+        new_len = length - math.floor(rand.random() * disrupt_trim_max)
+        new_len = min(new_len, length)
         return x[:new_len], y, new_len
+
+    elif y == 1 and rand.random() < tau_trim_prob:
+        # sample len in [len-tau_trim_max, len]
+        new_len = length - math.floor(rand.random() * tau_trim_max)
+        new_len = min(new_len, length)
+        if new_len < length - tau:
+            y = 0
+        return x[:new_len], y, new_len
+
     elif y == 0 and rand.random() < nondisr_cut_prob:
         # sample len in [nondisr_cut_min, len]
-        new_len = nondisr_cut_min + math.ceil((len - nondisr_cut_min) * rand.random())
-        new_len = min(new_len, x.shape[0])
+        new_len = nondisr_cut_min + math.ceil(
+            (length - nondisr_cut_min) * rand.random()
+        )
+        new_len = min(new_len, length)
         return x[:new_len], y, new_len
+
     else:
-        return x, y, len
-
-
-def get_class_weights_seq_to_seq(train_dataset):
-    """Get class weights for the training set.
-
-    Args:
-        train_dataset (object): Training set.
-
-    Returns:
-        class_weights (list): List of class weights.
-    """
-    class_counts = {0: 0, 1: 0}
-
-    for i in range(len(train_dataset)):
-        df = train_dataset[i]
-        ones = torch.sum(df["labels"])
-        zeros = len(df["labels"]) - ones
-        class_counts[0] += zeros
-        class_counts[1] += ones
-    class_weights = [
-        class_counts[key] / sum(class_counts.values()) for key in class_counts.keys()
-    ]
-
-    print("class weights: ")
-    print(class_weights)
-
-    return class_weights
+        return x, y, length

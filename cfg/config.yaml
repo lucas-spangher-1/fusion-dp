@@ -65,6 +65,10 @@ dataset:
   augment: True
   params:
     end_cutoff_timesteps: 8 # Used for Lucas' dataset
+    taus:
+      cmod: 10
+      d3d: 75
+      east: 200
     len_aug_args:
       tiny_clip_max_len: 30
       tiny_clip_prob: 0.0
