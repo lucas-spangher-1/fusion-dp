@@ -4,6 +4,7 @@ from sklearn.preprocessing import RobustScaler
 import random
 from typing import List
 import math
+import collections
 
 
 class ModelReadyDataset(Dataset):
@@ -129,9 +130,48 @@ class ModelReadyDataset(Dataset):
         return x, y, length
 
 
+Inds = collections.namedtuple("Inds", ["existing", "new", "disr", "nondisr"])
+
+
+def get_index_sets(dataset, inds, new_machine):
+    """Looks through each index given in the dataset and generates the following sets
+        1. Existing machines: the indices of existing machines' shots
+        2. New machine: the indices of the new machine's shots
+        3. Disruptions: the indices of disruptions
+        4. Non-disruptions: the indices of non-disruptions
+    Args:
+        dataset: The dataset
+        inds: The indicies to look through in the dataset
+    """
+    existing_machines = {"cmod", "d3d", "east"}
+    existing_machines.remove(new_machine)
+
+    new, existing = set(), set()
+    disr, nondisr = set(), set()
+    for key in inds:
+        v = dataset[key]
+        if v["machine"] == new_machine:
+            new.add(key)
+        else:
+            existing.add(key)
+
+        if v["label"] == 0:
+            nondisr.add(key)
+        else:
+            disr.add(key)
+
+    assert len(existing & new) == 0, "Existing and new machines overlap"
+    assert len(disr & nondisr) == 0, "Disruptions and non-disr overlap"
+
+    assert len(existing | new) == len(inds)
+    assert len(disr | nondisr) == len(inds)
+
+    return Inds(existing, new, disr, nondisr)
+
+
 def get_train_test_indices_from_Jinxiang_cases(
-    dataset, case_number, new_machine, seed, case8_percentage=0.125
-):
+    dataset, case_number, new_machine, seed, test_percentage=0.15
+) -> tuple[list, list]:
     """Get train and test indices for Jinxiang's cases.
 
     Args:
@@ -146,26 +186,67 @@ def get_train_test_indices_from_Jinxiang_cases(
 
     rand = random.Random(seed)
 
-    existing_machines = {"cmod", "d3d", "east"}
-    existing_machines.remove(new_machine)
+    def take(inds, p=None, N=None):
+        assert p or N
+        N = math.ceil(p * len(inds)) if p else N
+        assert N is not None and N <= len(inds)
+        inds = list(inds)
+        rand.shuffle(inds)
+        return set(inds[:N])
 
-    assert case_number == 8, "Case number not supported"
-    if case_number == 8:
-        # Take case8_percentage of the data from each machine for test,
-        # this ensures each machine has the same percentage of data in the test set
-        by_machine = {"cmod": set(), "d3d": set(), "east": set()}
-        test_indices = set()
-        for key, value in dataset.items():
-            by_machine[value["machine"]].add(key)
-        for _machine, inds in by_machine.items():
-            test_indices.update(
-                rand.sample(sorted(inds), int(case8_percentage * len(inds)))
-            )
+    ix = get_index_sets(dataset, dataset.keys(), new_machine)
+    existing, new, disr, non_disr = (
+        ix.existing,
+        ix.new,
+        ix.disr,
+        ix.nondisr,
+    )
 
-        train_indices = list(set(dataset.keys()) - test_indices)
-        rand.shuffle(train_indices)
-        return train_indices, list(test_indices)
-    return ([], [])
+    test_inds = take(new, p=test_percentage)
+
+    # remove test_inds from the other sets
+    for s in [new, existing, disr, non_disr]:
+        s.difference_update(test_inds)
+
+    train_inds = set()
+    if case_number == 1:
+        train_inds = (existing & disr) | (new & non_disr) | (take(new & disr, N=20))
+    elif case_number == 2:
+        train_inds = (existing & disr) | (new & non_disr)
+    elif case_number == 3:
+        train_inds = (
+            (existing & disr) | take(new & non_disr, p=0.5) | take(new & disr, N=20)
+        )
+    elif case_number == 4:
+        train_inds = (new & non_disr) | take(new & disr, N=20)
+    elif case_number == 5:
+        train_inds = existing | (new & non_disr) | (take(new & disr, N=20))
+    elif case_number == 6:
+        train_inds = existing
+    elif case_number == 7:
+        train_inds = (existing & disr) | new
+    elif case_number == 8:
+        train_inds = existing | new
+    elif case_number == 9:
+        train_inds = new
+    elif case_number == 10:
+        train_inds = (existing & disr) | take(new & non_disr, p=0.33) | (new & disr)
+    elif case_number == 11:
+        train_inds = (
+            take(existing & non_disr, p=0.2)
+            | take(new & non_disr, p=0.33)
+            | (new & disr)
+        )
+    elif case_number == 12:
+        train_inds = take(new & non_disr, p=0.33) | (new & disr)
+    else:
+        raise ValueError(f"Case {case_number} not supported")
+
+    assert len(test_inds & train_inds) == 0, "Test and train overlap"
+    train_inds, test_inds = list(train_inds), list(test_inds)
+    rand.shuffle(train_inds)
+    rand.shuffle(test_inds)
+    return train_inds, test_inds
 
 
 def length_augmentation(
