@@ -4,7 +4,7 @@
 device: cpu
 offline: True
 deterministic: False
-no_workers: -1
+no_workers: 1
 seed: 42
 comment: ''
 # network
@@ -76,6 +76,8 @@ dataset:
       disrupt_trim_prob: 0.0
       nondisr_cut_min: 1
       nondisr_cut_prob: 0.3
+      tau_trim_prob: 0.0
+      tau_trim_max: 10
     modelnet:
       num_nodes: -1         # For ModelNet. Number of nodes to sample.
       resampling_factor: 1  # For ModelNet. Number of times to resample each mesh in the training set.
