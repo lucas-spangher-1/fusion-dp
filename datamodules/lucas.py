@@ -45,7 +45,7 @@ class LucasDataModule(pl.LightningDataModule):
         data_type: str = "default",
         end_cutoff: int = None,
         end_cutoff_timesteps: int = None,
-        new_machine: str = "cmod",
+        new_machine: str = "east",
         case_number: int = 8,
         machine_hyperparameters: dict = {"cmod": 1.0, "d3d": 1.0, "east": 1.0},
         batch_size: int = 32,

@@ -65,6 +65,8 @@ dataset:
   augment: True
   params:
     end_cutoff_timesteps: 8 # Used for Lucas' dataset
+    new_machine: east
+    case_number: 8
     taus:
       cmod: 10
       d3d: 75
@@ -74,7 +76,7 @@ dataset:
       tiny_clip_prob: 0.0
       disrupt_trim_max: 10
       disrupt_trim_prob: 0.0
-      nondisr_cut_min: 1
+      nondisr_cut_min: 5
       nondisr_cut_prob: 0.3
       tau_trim_prob: 0.0
       tau_trim_max: 10

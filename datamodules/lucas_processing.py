@@ -239,6 +239,9 @@ def get_train_test_indices_from_Jinxiang_cases(
         )
     elif case_number == 12:
         train_inds = take(new & non_disr, p=0.33) | (new & disr)
+    elif case_number == 14:  # Will's case 14 where everything is a 12.5% split
+        test_inds = take(dataset.keys(), p=0.125)
+        train_inds = set(dataset.keys()) - test_inds
     else:
         raise ValueError(f"Case {case_number} not supported")
 
