@@ -59,10 +59,11 @@ def main(
 
     # Initialize wandb logger
     wandb_logger = WandbLogger(
+        save_dir=os.environ.get("WANDB_LOGGER_DIR", "."),
         project=cfg.wandb.project,
         entity=cfg.wandb.entity if cfg.wandb.entity != -1 else None,
         config=ckconv.utils.flatten_configdict(cfg),
-        log_model=None
+        log_model=False
         if cfg.offline
         else "all",  # used to save models to wandb during training
         offline=cfg.offline,

@@ -94,7 +94,7 @@ def construct_trainer(
 
     # create trainer
     trainer = pl.Trainer(
-        default_root_dir=os.getcwd(),
+        default_root_dir=os.environ.get("TRAINER_DIR", os.getcwd()),
         accelerator=accelerator,
         max_epochs=cfg.train.epochs,
         logger=wandb_logger,
