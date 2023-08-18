@@ -21,10 +21,8 @@ def construct_trainer(
     # Set up determinism
     if cfg.deterministic:
         deterministic = True
-        benchmark = False
     else:
         deterministic = False
-        benchmark = True
 
     # Callback to print model summary
     modelsummary_callback = pl.callbacks.ModelSummary(
@@ -33,14 +31,14 @@ def construct_trainer(
 
     # Metric to monitor
     if cfg.scheduler.mode == "max":
-        monitor = "val/acc"
+        monitor = "val/auroc"
     elif cfg.scheduler.mode == "min":
         monitor = "val/loss"
 
     # Callback for model checkpointing:
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         monitor=monitor,
-        mode=cfg.scheduler.mode,  # Save on best validation accuracy
+        mode=cfg.scheduler.mode,  # Save on best loss or auroc
         save_last=True,  # Keep track of the model at the last epoch
         verbose=True,
     )
@@ -121,6 +119,5 @@ def construct_trainer(
         precision=precision,
         # Determinism
         deterministic=deterministic,
-        benchmark=benchmark,
     )
     return trainer, checkpoint_callback
