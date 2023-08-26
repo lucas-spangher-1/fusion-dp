@@ -169,7 +169,7 @@ class ResNet_sequence(ResNetBase):
     OUTPUT_TYPE = "label"
 
     # here x is always without lens
-    def __blocks_normed(self, x):
+    def blocks_normed(self, x):
         # Dropout in
         x = self.dropout_in(x)
         # First layers
@@ -181,7 +181,7 @@ class ResNet_sequence(ResNetBase):
         return out
 
     def forward(self, x, lens, *args):
-        out = self.__blocks_normed(x)
+        out = self.blocks_normed(x)
         # Combine masking and multiplying by the denominator for
         # an average of the sequence outputs
         mask = torch.zeros_like(out)
@@ -196,7 +196,7 @@ class ResNet_sequence(ResNetBase):
         return out.squeeze(-1)
 
     def forward_unrolled(self, x, *args):
-        out = self.__blocks_normed(x)
+        out = self.blocks_normed(x)
         out = torch.cumsum(out, dim=-1)
         out = out / torch.arange(1, out.shape[-1] + 1, device=out.device)
         out = self.out_layer(out)
