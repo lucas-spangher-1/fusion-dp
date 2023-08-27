@@ -9,3 +9,4 @@ from .norm import LayerNorm, GraphBatchNorm
 from .dropout import GraphDropout, GraphDropout2d
 from .loss import LnLoss
 from .pointflexconv import PointFlexConv, SeparablePointFlexConv
+from .s4 import S4
