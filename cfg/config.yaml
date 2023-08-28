@@ -57,6 +57,10 @@ conv:
   padding: "same"
   stride: 1
   cache: False
+  s4:
+    mode: dplr
+    init: fout
+    lr: 0.001
 # datamodules
 dataset:
   name: 'Lucas'
@@ -116,6 +120,7 @@ optimizer:
   momentum: -1.
   nesterov: False
   weight_decay: 0.0
+  s4_lr: 0.001
 scheduler:
   name: 'cosine'
   decay_steps: -1

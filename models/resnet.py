@@ -43,6 +43,7 @@ class ResNetBase(torch.nn.Module):
 
         # Unpack conv_type
         conv_type = conv_cfg.type
+        self.use_encoder = conv_type == "S4"
         # Define partials for types of convs
         ConvType = partial(
             getattr(ckconv.nn, conv_type),
@@ -76,8 +77,22 @@ class ResNetBase(torch.nn.Module):
         # Define Dropout layer type
         DropoutType = getattr(torch.nn, dropout_type)
 
+        # Encoder if we're using S4
+        self.encoder = None
+        if conv_type == "S4":
+            # if using s4, can't have varying hidden dims
+            assert (
+                block_width_factors[0] == 0.0
+            ), "S4 doesn't support varying hidden dimensions"
+            # and need to use a linear layer at the start as an encoder
+            self.encoder = LinearType(in_channels, hidden_channels)
+            self.conv1 = ConvType(
+                in_channels=hidden_channels, out_channels=hidden_channels
+            )
+        else:
+            self.conv1 = ConvType(in_channels=in_channels, out_channels=hidden_channels)
+
         # Create Input Layers
-        self.conv1 = ConvType(in_channels=in_channels, out_channels=hidden_channels)
         self.norm1 = NormType(hidden_channels)
         self.nonlinear = NonlinearType()
 
@@ -170,6 +185,8 @@ class ResNet_sequence(ResNetBase):
 
     # here x is always without lens
     def blocks_normed(self, x):
+        if self.encoder:
+            x = self.encoder(x)
         # Dropout in
         x = self.dropout_in(x)
         # First layers

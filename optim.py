@@ -26,27 +26,48 @@ def construct_optimizer(
     optimizer_type = optim_cfg.name
     lr = optim_cfg.lr
     mask_lr = optim_cfg.lr * optim_cfg.mask_lr_ratio
+    s4_lr = optim_cfg.s4_lr
 
-    # Divide params in mask parameters & other parameters
-    all_parameters = model.parameters()
-    # mask_params
-    mask_params = []
-    for m in model.modules():
-        if isinstance(m, ckconv.nn.FlexConv):
-            mask_params += list(
-                map(
-                    lambda x: x[1],
-                    list(
-                        filter(lambda kv: "mask_params" in kv[0], m.named_parameters())
-                    ),
-                )
-            )
-    other_params = [v for v in all_parameters if v not in mask_params]
+    # mask params have the name "mask_params" in the FlexConv
+    mask_param_names = []
+    # s4 params that should use the lower lr have an attribute "_optim"
+    s4_param_names = []
+    s4_params_hps = []
+    for name, p in model.named_parameters():
+        if "mask_params" in name:
+            mask_param_names.append(name)
+        elif hasattr(p, "_optim"):
+            s4_param_names.append(name)
+            s4_params_hps.append(p._optim)
+
+    all_params = dict(model.named_parameters())
+    other_params = [
+        v
+        for k, v in model.named_parameters()
+        if (k not in mask_param_names) and (k not in s4_param_names)
+    ]
+    mask_params = [all_params[k] for k in mask_param_names]
     # as list
     parameters = [
         {"params": other_params},
         {"params": mask_params, "lr": mask_lr},
     ]
+    # want one group of parameters for each set of custom optimization parameters in hps
+    group_hps = []
+    group_param_names = []
+    for hp, name in zip(s4_params_hps, s4_param_names):
+        if hp in group_hps:
+            group_param_names[group_hps.index(hp)].append(name)
+        else:
+            group_hps.append(hp)
+            group_param_names.append([name])
+
+    # print out everything
+    print(f"Mask parameters, lr={mask_lr}: {mask_param_names}")
+
+    for hp, names in zip(group_hps, group_param_names):
+        print(f"S4 group, {repr(hp)}: {names}")
+        parameters.append({"params": [all_params[k] for k in names], **hp})
 
     # Construct optimizer
     if optimizer_type == "SGD":
