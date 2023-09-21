@@ -26,7 +26,6 @@ def construct_optimizer(
     optimizer_type = optim_cfg.name
     lr = optim_cfg.lr
     mask_lr = optim_cfg.lr * optim_cfg.mask_lr_ratio
-    s4_lr = optim_cfg.s4_lr
 
     # mask params have the name "mask_params" in the FlexConv
     mask_param_names = []

@@ -120,7 +120,6 @@ optimizer:
   momentum: -1.
   nesterov: False
   weight_decay: 0.0
-  s4_lr: 0.001
 scheduler:
   name: 'cosine'
   decay_steps: -1
