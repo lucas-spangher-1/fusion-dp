@@ -54,9 +54,9 @@ class ModelReadyDataset(Dataset):
             )
 
             shot_end = 0
-            if end_cutoff:
+            if end_cutoff is not None:
                 shot_end = int(len(shot_df) * (end_cutoff))
-            elif end_cutoff_timesteps:
+            elif end_cutoff_timesteps is not None:
                 shot_end = int(len(shot_df) - end_cutoff_timesteps)
             else:
                 raise Exception(

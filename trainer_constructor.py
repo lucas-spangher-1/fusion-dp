@@ -39,8 +39,6 @@ def construct_trainer(
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         monitor=monitor,
         mode=cfg.scheduler.mode,  # Save on best loss or auroc
-        save_top_k=3,
-        every_n_epochs=30,
         verbose=True,
     )
 

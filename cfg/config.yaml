@@ -97,7 +97,7 @@ train:
   epochs: 210
   batch_size: 50
   grad_clip: 0.0
-  max_epochs_no_improvement: 40
+  max_epochs_no_improvement: 100
   track_grad_norm: -1 # -1 for no tracking.
   accumulate_grad_steps: 1 # Accumulate gradient over different batches.
   distributed: False
