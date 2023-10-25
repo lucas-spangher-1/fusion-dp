@@ -59,6 +59,11 @@ def main(
     # Construct model
     model = construct_model(cfg, datamodule)
 
+    wandb.init(
+        project="HDL-improvement-transformer",
+        entity="lucas-spangher",
+    )
+
     # Initialize wandb logger
     wandb_logger = WandbLogger(
         save_dir=os.environ.get("WANDB_LOGGER_DIR", "."),
@@ -72,6 +77,7 @@ def main(
         id=cfg.wandb.run_id if cfg.wandb.run_id != -1 else None,
         save_code=False,
     )
+    
     print(f"Wandb id is {wandb.run.id}")
 
     # Before start training. Verify arguments in the cfg.

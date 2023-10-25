@@ -3,6 +3,8 @@ import eval_class.model_eval as me
 from datamodules.lucas_processing import ModelReadyDataset
 import torch
 import numpy as np
+import json
+import time 
 
 
 def evaluate_main(cfg, datamodule, eval_model):
@@ -28,7 +30,7 @@ def evaluate_main(cfg, datamodule, eval_model):
         eval_low_thresh = eval_high_thresh
 
     # will --  where is the model stored? 
-    eval_dict = create_eval_dict(eval_dataset, eval_model=eval_model, master_dataset=datamodule.original_data)
+    eval_dict, wall_clock = create_eval_dict(eval_dataset, eval_model=eval_model, master_dataset=datamodule.original_data)
     params, metrics = return_eval_params()
 
     params['high_thr'] = eval_high_thresh
@@ -43,8 +45,21 @@ def evaluate_main(cfg, datamodule, eval_model):
         params_dict=params,
     )
 
+    val_metrics_report["wall_clock"] = wall_clock
+
     print("Saving evaluation metrics to wandb...")
+
+    filename = f"eval_metrics_case_{cfg.dataset.case_number}_{time.time()}.json"
+
+    with open(filename, 'w') as json_file:
+        json.dump(val_metrics_report, json_file, indent=4, default=default_serialize)
+    
     wandb.log(val_metrics_report)
+
+    def default_serialize(o):
+        if isinstance(o, np.ndarray):
+            return o.tolist()
+        raise TypeError(f"Object of type '{type(o).__name__}' is not JSON serializable")
 
     return
 
@@ -72,7 +87,11 @@ def create_eval_dict(test_dataset, eval_model, master_dataset):
         shot_xs = shot_xs.transpose(0,1).unsqueeze(0)
         
         # TODO: Will: generate unrollled predictions and put them in disruptivity
+        start_time = time.time()
         disruptivity = eval_model.network.forward_unrolled(shot_xs)
+        end_time = time.time()
+
+        wall_clock = end_time - start_time
   
         time = np.array(list(range(disruptivity.shape[1]))) * .005  # cmod is always the test machine
         label = labels[0][1] > .5 ## Will, the labels are the same value, intentional?
@@ -90,7 +109,7 @@ def create_eval_dict(test_dataset, eval_model, master_dataset):
 
         ind += 1 
     
-    return eval_dict
+    return eval_dict, wall_clock
 
 
 def return_eval_params():
