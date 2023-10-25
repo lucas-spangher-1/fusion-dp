@@ -22,6 +22,8 @@ from omegaconf import OmegaConf
 import os
 from pathlib import Path
 
+import evaluation
+
 
 @hydra.main(config_path="cfg", config_name="config.yaml", version_base="1.3")
 def main(
@@ -56,6 +58,15 @@ def main(
 
     # Construct model
     model = construct_model(cfg, datamodule)
+
+    wandb.init(
+        project=cfg.wandb.project,
+        entity=cfg.wandb.entity if cfg.wandb.entity != -1 else None,
+        config=ckconv.utils.flatten_configdict(cfg),
+        id=cfg.wandb.run_id if cfg.wandb.run_id != -1 else None,
+        resume=cfg.train.resume_wandb if cfg.train.resume_wandb != -1 else None,
+        save_code=False,
+    )
 
     # Initialize wandb logger
     wandb_logger = WandbLogger(
@@ -159,6 +170,13 @@ def main(
     trainer.test(
         model,
         datamodule=datamodule,
+    )
+
+    # evaluation with the ENI code
+    evaluation.evaluate_main(
+        cfg=cfg, 
+        datamodule=datamodule,
+        eval_model=model
     )
 
 

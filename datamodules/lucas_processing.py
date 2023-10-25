@@ -5,6 +5,8 @@ import random
 from typing import List
 import math
 import collections
+import typing
+import pandas as pd 
 
 
 class ModelReadyDataset(Dataset):
@@ -54,14 +56,7 @@ class ModelReadyDataset(Dataset):
             )
 
             shot_end = 0
-            if end_cutoff is not None:
-                shot_end = int(len(shot_df) * (end_cutoff))
-            elif end_cutoff_timesteps is not None:
-                shot_end = int(len(shot_df) - end_cutoff_timesteps)
-            else:
-                raise Exception(
-                    "Must provide either end_cutoff or end_cutoff_timesteps"
-                )
+            shot_end = int(len(shot_df) - end_cutoff_timesteps)
 
             d = torch.tensor(shot_df[:shot_end], dtype=torch.float32)
 
@@ -132,7 +127,6 @@ class ModelReadyDataset(Dataset):
 
 Inds = collections.namedtuple("Inds", ["existing", "new", "disr", "nondisr"])
 
-
 def get_index_sets(dataset, inds, new_machine):
     """Looks through each index given in the dataset and generates the following sets
         1. Existing machines: the indices of existing machines' shots
@@ -171,7 +165,7 @@ def get_index_sets(dataset, inds, new_machine):
 
 def get_train_test_indices_from_Jinxiang_cases(
     dataset, case_number, new_machine, seed, test_percentage=0.15
-) -> tuple[list, list]:
+) -> typing.Tuple[list, list]:
     """Get train and test indices for Jinxiang's cases.
 
     Args:
@@ -326,3 +320,34 @@ def length_augmentation(
 
     else:
         return x, y, length
+
+
+
+def train_test_val_inds_from_file(
+        case_number,
+        testing,
+        ):
+    """Get train, test, and validation indices for a dataset. 
+    Separating this function out now so that the same indices 
+    can be used for all curriculum steps.
+
+    Args:
+        case_number (int): Case number.
+        testing (bool): Whether to use a small subset of the data for testing.
+
+    Returns:
+        train_inds (list): List of training indices.
+        test_inds (list): List of testing indices.
+        val_inds (list): List of validation indices.
+    """
+
+    train_inds = pd.read_csv(f"train_inds_case{case_number}.csv")["dataset_index"].tolist()
+    test_inds = pd.read_csv(f"holdout_inds_case{case_number}.csv")["dataset_index"].tolist()
+    val_inds = pd.read_csv(f"val_inds_case{case_number}.csv")["dataset_index"].tolist()
+
+    if testing:
+        train_inds = train_inds[:150]
+        test_inds = test_inds[:150]
+        val_inds = val_inds[:150]
+
+    return train_inds, test_inds, val_inds

@@ -3,12 +3,13 @@ import torch.nn.functional as f
 import torch.fft
 
 from typing import Optional
+import typing
 
 
 def causal_padding(
     x: torch.Tensor,
     kernel: torch.Tensor,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> typing.Tuple[torch.Tensor, torch.Tensor]:
     # 1. Pad the input signal & kernel tensors.
     # Check if the size of the kernel is odd. If not, add a pad of zero to make them odd.
     if kernel.shape[-1] % 2 == 0:
@@ -22,7 +23,7 @@ def causal_padding(
 def padding(
     x: torch.Tensor,
     kernel: torch.Tensor,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> typing.Tuple[torch.Tensor, torch.Tensor]:
     # 1. Pad the input signal & kernel tensors.
     # x = torch.nn.functional.pad(x, [1, 0], value=0.0)
     # 2. Perform padding on the input so that output equals input in length

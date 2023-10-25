@@ -6,12 +6,13 @@ import os
 import torch.cuda
 from omegaconf import OmegaConf
 from pytorch_lightning.loggers import WandbLogger
+import typing
 
 
 def construct_trainer(
     cfg: OmegaConf,
     wandb_logger: pl.loggers.WandbLogger,
-) -> tuple[pl.Trainer, pl.Callback]:
+) -> typing.Tuple[pl.Trainer, pl.Callback]:
     # Set up precision
     if cfg.train.mixed_precision:
         precision = 16
@@ -109,7 +110,7 @@ def construct_trainer(
             exception_callback,
         ],
         # Multi-GPU
-        num_nodes=num_nodes,
+        num_nodes=num_nodes if accelerator == "gpu" else 1,
         devices=devices,
         strategy=strategy,
         sync_batchnorm=sync_batchnorm,

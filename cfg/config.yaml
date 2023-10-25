@@ -130,7 +130,10 @@ scheduler:
 # testing
 test:
   batch_size_multiplier: 1
-  before_train: False
+  before_train: False  
+  eval_high_thresh: .5
+  eval_low_thresh: .5
+  eval_hysteresis: 3
 # wandb logging
 wandb:
   project: ccnn
