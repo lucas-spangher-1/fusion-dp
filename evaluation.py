@@ -49,7 +49,7 @@ def evaluate_main(cfg, datamodule, eval_model):
 
     print("Saving evaluation metrics to wandb...")
 
-    filename = f"eval_metrics_case_{cfg.dataset.params.case_number}_{time.time()}.json"
+    filename = f"eval_metrics_case_{cfg.dataset.params.case_number}_hyst_{cfg.test.eval_hysteresis}_{time.time()}.json"
 
 
     def default_serialize(o):
