@@ -51,17 +51,22 @@ def evaluate_main(cfg, datamodule, eval_model):
 
     filename = f"eval_metrics_case_{cfg.dataset.params.case_number}_{time.time()}.json"
 
+
+    def default_serialize(o):
+        if isinstance(o, np.ndarray):
+            return o.tolist()
+
+        raise TypeError(f"Object of type '{type(o).__name__}' is not JSON serializable")
+
+
     with open(filename, 'w') as json_file:
         json.dump(val_metrics_report, json_file, indent=4, default=default_serialize)
     
     wandb.log(val_metrics_report)
 
-    def default_serialize(o):
-        if isinstance(o, np.ndarray):
-            return o.tolist()
-        raise TypeError(f"Object of type '{type(o).__name__}' is not JSON serializable")
-
     return
+
+
 
 
 
