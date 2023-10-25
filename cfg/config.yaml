@@ -2,7 +2,7 @@
 
 # global parameters
 device: cpu
-offline: True
+offline: False
 deterministic: False
 no_workers: 1
 seed: 42
