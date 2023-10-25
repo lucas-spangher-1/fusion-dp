@@ -62,6 +62,7 @@ def main(
     wandb.init(
         project=cfg.wandb.project,
         entity=cfg.wandb.entity if cfg.wandb.entity != -1 else None,
+        name="run_" + os.environ["SLURM_ARRAY_TASK_ID"],
         config=ckconv.utils.flatten_configdict(cfg),
         id=cfg.wandb.run_id if cfg.wandb.run_id != -1 else None,
         resume=cfg.train.resume_wandb if cfg.train.resume_wandb != -1 else None,
@@ -70,6 +71,7 @@ def main(
 
     # Initialize wandb logger
     wandb_logger = WandbLogger(
+        name="run_" + os.environ["SLURM_ARRAY_TASK_ID"],
         save_dir=os.environ.get("WANDB_LOGGER_DIR", "."),
         project=cfg.wandb.project,
         entity=cfg.wandb.entity if cfg.wandb.entity != -1 else None,
