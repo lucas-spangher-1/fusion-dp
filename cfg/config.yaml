@@ -136,7 +136,7 @@ test:
   eval_hysteresis: 3
 # wandb logging
 wandb:
-  project: HDL-improvement-transformer
+  project: "HDL-improvement-transformer"
   entity: -1
   run_id: -1
 # checkpoint
