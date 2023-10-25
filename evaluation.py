@@ -93,17 +93,17 @@ def create_eval_dict(test_dataset, eval_model, master_dataset):
 
         wall_clock = end_time - start_time
   
-        time = np.array(list(range(disruptivity.shape[1]))) * .005  # cmod is always the test machine
+        temp_time = np.array(list(range(disruptivity.shape[1]))) * .005  # cmod is always the test machine
         label = labels[0][1] > .5 ## Will, the labels are the same value, intentional?
         time_until_disrupt = [np.nan] * disruptivity.shape[1]
 
         if label:
-            time_until_disrupt = max(time) - time
+            time_until_disrupt = max(temp_time) - temp_time
         
         eval_dict[ind] = {
             "proba_shot": disruptivity.squeeze().detach().numpy(),
             "time_untill_disrupt": time_until_disrupt,
-            "time_shot": time,
+            "time_shot": temp_time,
             "label_shot": label,                    
         }
 

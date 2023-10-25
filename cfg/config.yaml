@@ -94,7 +94,7 @@ dataset:
 train:
   do: True
   mixed_precision: False 
-  epochs: 1
+  epochs: 210
   batch_size: 50
   grad_clip: 0.0
   max_epochs_no_improvement: 100

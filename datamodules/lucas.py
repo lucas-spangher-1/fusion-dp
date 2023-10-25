@@ -54,7 +54,7 @@ class LucasDataModule(pl.LightningDataModule):
         val_percent: float = 0.1,
         num_workers: int = 1,
         augment: bool = False,
-        debug: bool = True,
+        debug: bool = False,
         seed: int = 42,
         len_aug_args: dict = {},
         taus: dict = {"cmod": 10, "d3d": 75, "east": 200},
