@@ -110,7 +110,7 @@ def construct_trainer(
             exception_callback,
         ],
         # Multi-GPU
-        num_nodes=num_nodes if accelerator == "gpu" else 1,
+        num_nodes=num_nodes,
         devices=devices,
         strategy=strategy,
         sync_batchnorm=sync_batchnorm,
