@@ -2,7 +2,7 @@
 #SBATCH --job-name=ccnn_sweep
 #SBATCH -N 1
 #SBATCH --gres=gpu
-#SBATCH --time=7:00:00
+#SBATCH --time=3:00:00
 #SBATCH -p sched_mit_psfc_gpu_r8
 
 source /etc/profile
@@ -21,7 +21,7 @@ export PYTHONUSERBASE=intentionally-disabled
 # export WANDB_API_KEY=$(cat lucas_wandb_api)
 
 python main.py device=cuda offline=True net.no_hidden=15 net.no_blocks=3 kernel.no_hidden=4 \
-  kernel.no_layers=3 test.eval_high_thresh=.5 test.eval_low_thresh=.5 test.eval_hysteris=$1 \
+  kernel.no_layers=3 test.eval_high_thresh=.5 test.eval_low_thresh=.5 test.eval_hysteresis=$1 \
   dataset.params.case_number=$2
 
 # Deactivate your virtual environment

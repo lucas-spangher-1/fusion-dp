@@ -70,7 +70,7 @@ dataset:
   params:
     end_cutoff_timesteps: 8 # Used for Lucas' dataset
     new_machine: east
-    case_number: 8
+    case_number: 6
     taus:
       cmod: 10
       d3d: 75
