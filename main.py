@@ -71,7 +71,6 @@ def main(
 
     # Initialize wandb logger
     wandb_logger = WandbLogger(
-        name="run_" + os.environ["SLURM_ARRAY_TASK_ID"],
         save_dir=os.environ.get("WANDB_LOGGER_DIR", "."),
         project=cfg.wandb.project,
         entity=cfg.wandb.entity if cfg.wandb.entity != -1 else None,
