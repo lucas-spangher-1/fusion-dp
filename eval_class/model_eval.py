@@ -154,10 +154,15 @@ class model_performance():
             time_shot = time_shot[time_untill_disrupt>=t_useful]
         
         # convert t_hysteresis [s] into hysteresis [number of points] by dividing time_step/t_hysteresis
-        if t_hysteresis == 0:
-            hysteresis = 0
-        else:
-            hysteresis = (time_shot.ravel()[1]-time_shot.ravel()[0]).round(4)//t_hysteresis
+        # if t_hysteresis == 0:
+        #     hysteresis = 0
+        # else:
+        #     if len(time_shot.ravel()) >= 2:
+        #         hysteresis = (time_shot.ravel()[1]-time_shot.ravel()[0]).round(4)//t_hysteresis
+        #     else:
+        #         hysteresis = 2
+
+        hysteresis = 0
             
         if high_thr == low_thr: 
             # disable hysteresis and look at the entire timeseries at once
